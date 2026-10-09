@@ -21,6 +21,8 @@ import {
   INITIAL_FAILURE_INJECTORS,
 } from './seedData';
 import { BRAND_CONFIG } from '../shared/i18n';
+import { logoutOperator, type OperatorSession } from '../shared/api/operatorAuth';
+import { getConversation, listConversations, listConversationMessages, listOpenHandoffs, sendConversationMessage, setConversationHandback, setConversationTakeover, type ConversationRecord, type ConversationMessageRecord } from '../shared/api/operatorCrmApi';
 
 const STORAGE_KEYS = {
   CONVERSATIONS: 'meta_crm_conversations_v1',
@@ -29,8 +31,6 @@ const STORAGE_KEYS = {
   INJECTORS: 'meta_crm_injectors_v1',
   EVENTS: 'meta_crm_events_v1',
   ADVISOR: 'meta_crm_advisor_v1',
-  USER_ROLE: 'meta_crm_user_role_v1',
-  AUTH: 'meta_crm_auth_v1',
 };
 
 const DEFAULT_ADVISOR: AdvisorProfile = {
@@ -60,6 +60,11 @@ let state = {
   isInspectorOpen: false,
   userRole: 'propietario' as 'propietario' | 'gerente' | 'asesor',
   isAuthenticated: false,
+  authReady: false,
+  authUnavailable: false,
+  tenantIds: [] as string[],
+  activeTenantId: null as string | null,
+  crmDataError: null as string | null,
 };
 
 // Load initial state from localStorage if present
@@ -82,11 +87,6 @@ try {
   const savedAdvisor = localStorage.getItem(STORAGE_KEYS.ADVISOR);
   if (savedAdvisor) state.advisorProfile = JSON.parse(savedAdvisor);
 
-  const savedUserRole = localStorage.getItem(STORAGE_KEYS.USER_ROLE);
-  if (savedUserRole) state.userRole = savedUserRole as 'propietario' | 'gerente' | 'asesor';
-
-  const savedAuth = localStorage.getItem(STORAGE_KEYS.AUTH);
-  if (savedAuth === 'true') state.isAuthenticated = true;
 } catch (e) {
   console.warn('Could not read from localStorage, using initial seeds', e);
 }
@@ -119,7 +119,6 @@ function persist() {
     localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(state.botConfig));
     localStorage.setItem(STORAGE_KEYS.INJECTORS, JSON.stringify(state.failureInjectors));
     localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(state.events));
-    localStorage.setItem(STORAGE_KEYS.USER_ROLE, state.userRole);
   } catch (e) {
     console.warn('LocalStorage save failed', e);
   }
@@ -141,6 +140,59 @@ export function logSystemEvent(
 
 // In-memory deduplication cache for Meta webhooks
 const processedWebhookIds = new Set<string>();
+
+function roleFromSession(roles: string[]): 'propietario' | 'gerente' | 'asesor' {
+  if (roles.includes('ADMIN')) return 'propietario';
+  if (roles.includes('MANAGER')) return 'gerente';
+  return 'asesor';
+}
+
+function roleLabel(role: 'propietario' | 'gerente' | 'asesor'): string {
+  if (role === 'propietario') return 'Propietario';
+  if (role === 'gerente') return 'Gerente / Supervisor';
+  return 'Asesor de Ventas';
+}
+
+function toUiConversation(record: ConversationRecord): Conversation {
+  const timestamp = record.latestMessage?.receivedAt ?? record.updatedAt;
+  const status: ThreadStatus = record.state === 'HUMAN_ACTIVE' ? 'human'
+    : record.state === 'HUMAN_PENDING' ? 'waiting'
+      : record.state === 'CLOSED' ? 'failed' : 'bot';
+  return {
+    id: record.id,
+    version: record.version,
+    channel: record.channel.toLowerCase() as Channel,
+    customerName: record.participant.displayName || record.participant.phone || record.participant.providerId,
+    customerHandle: record.participant.phone || record.participant.providerId,
+    avatarUrl: '',
+    status,
+    leadTemperature: 'cold',
+    temperatureSource: 'ai',
+    extractedFields: {},
+    firstSeen: record.updatedAt,
+    lastMessageAt: timestamp,
+    lastCustomerMessageAt: timestamp,
+    unreadCount: 0,
+    isWindowOpen: false,
+    assignedTo: record.assignedOperatorId ?? undefined,
+  };
+}
+
+function toUiMessage(record: ConversationMessageRecord, channel: Channel): Message {
+  const status: Message['status'] = record.deliveryStatus === 'FAILED' ? 'failed'
+    : record.deliveryStatus === 'READ' ? 'read'
+      : record.deliveryStatus === 'DELIVERED' ? 'delivered'
+        : record.deliveryStatus === 'SENT' ? 'sent' : 'sending';
+  return {
+    id: record.id,
+    conversationId: record.conversationId,
+    channel,
+    sender: record.direction === 'INBOUND' ? 'customer' : 'human',
+    content: record.content,
+    timestamp: record.sentAt ?? record.receivedAt,
+    status,
+  };
+}
 
 export function useCrmStore() {
   const store = useSyncExternalStore(subscribe, getSnapshot);
@@ -170,6 +222,21 @@ export function useCrmStore() {
 
     persist();
     notify();
+    const tenantId = state.activeTenantId;
+    if (tenantId && state.isAuthenticated) {
+      void listConversationMessages(tenantId, id).then((page) => {
+        if (state.selectedConversationId !== id) return;
+        const conversation = state.conversations.find((item) => item.id === id);
+        if (!conversation) return;
+        state.messages = page.items.map((message) => toUiMessage(message, conversation.channel));
+        state.crmDataError = null;
+        notify();
+      }).catch((error: unknown) => {
+        if (state.selectedConversationId !== id) return;
+        state.crmDataError = error instanceof Error ? error.message : 'No se pudieron cargar los mensajes';
+        notify();
+      });
+    }
   }, []);
 
   const setSelectedMessageId = useCallback((id: string | null) => {
@@ -202,11 +269,38 @@ export function useCrmStore() {
     notify();
   }, []);
 
-  const setTakeover = useCallback((conversationId: string, targetStatus: 'bot' | 'human') => {
+  const setTakeover = useCallback(async (conversationId: string, targetStatus: 'bot' | 'human') => {
     const conv = state.conversations.find((c) => c.id === conversationId);
     if (!conv) return;
 
     if (conv.status === targetStatus) return;
+
+    if (state.isAuthenticated) {
+      const tenantId = state.activeTenantId;
+      if (!tenantId) {
+        state.crmDataError = 'Selecciona una sucursal antes de cambiar el control del chat.';
+        notify();
+        return;
+      }
+      try {
+        if (targetStatus === 'human') {
+          await setConversationTakeover(tenantId, conversationId);
+        } else {
+          const openHandoffs = await listOpenHandoffs();
+          const handoff = openHandoffs.items.find((item) => item.conversationId === conversationId && item.status !== 'CLOSED');
+          if (!handoff) throw new Error('No hay una transferencia activa para devolver al asistente.');
+          await setConversationHandback(conversationId, handoff.version);
+        }
+        const refreshed = await getConversation(tenantId, conversationId);
+        state.conversations = state.conversations.map((item) => item.id === conversationId ? toUiConversation(refreshed) : item);
+        state.crmDataError = null;
+        notify();
+      } catch (error) {
+        state.crmDataError = error instanceof Error ? error.message : 'No se pudo actualizar el control del chat';
+        notify();
+      }
+      return;
+    }
 
     state.conversations = state.conversations.map((c) =>
       c.id === conversationId ? { ...c, status: targetStatus } : c
@@ -231,9 +325,12 @@ export function useCrmStore() {
     if (!conv) return;
 
     const newStatus: ThreadStatus = conv.status === 'human' ? 'bot' : 'human';
-    state.conversations = state.conversations.map((c) =>
-      c.id === conversationId ? { ...c, status: newStatus } : c
-    );
+    if (state.isAuthenticated) {
+      void setTakeover(conversationId, newStatus);
+      return;
+    }
+
+    state.conversations = state.conversations.map((c) => c.id === conversationId ? { ...c, status: newStatus } : c);
 
     logSystemEvent({
       conversationId,
@@ -247,7 +344,7 @@ export function useCrmStore() {
 
     persist();
     notify();
-  }, []);
+  }, [setTakeover]);
 
   const updateLeadTemperature = useCallback((conversationId: string, temp: LeadTemperature) => {
     const conv = state.conversations.find((c) => c.id === conversationId);
@@ -431,9 +528,39 @@ export function useCrmStore() {
   }, []);
 
   // Send human agent message or internal note
-  const sendAgentMessage = useCallback((conversationId: string, content: string, isInternalNote = false) => {
+  const sendAgentMessage = useCallback(async (conversationId: string, content: string, isInternalNote = false) => {
     const conv = state.conversations.find((c) => c.id === conversationId);
     if (!conv || !content.trim()) return;
+
+    if (state.isAuthenticated) {
+      if (!state.activeTenantId || conv.version === undefined) {
+        state.crmDataError = 'No se puede enviar el mensaje: falta sucursal o versión de conversación.';
+        notify();
+        return;
+      }
+      try {
+        const receipt = await sendConversationMessage(state.activeTenantId, conversationId, conv.version, content.trim(), isInternalNote);
+        state.conversations = state.conversations.map((item) => item.id === conversationId
+          ? { ...item, version: receipt.conversationVersion, lastMessageAt: receipt.acceptedAt }
+          : item);
+        state.messages = [...state.messages, {
+          id: receipt.messageId,
+          conversationId,
+          channel: conv.channel,
+          sender: isInternalNote ? 'system' : 'human',
+          content: content.trim(),
+          timestamp: receipt.acceptedAt,
+          status: isInternalNote ? 'delivered' : 'sending',
+          isInternalNote,
+        }];
+        state.crmDataError = null;
+        notify();
+      } catch (error) {
+        state.crmDataError = error instanceof Error ? error.message : 'No se pudo enviar el mensaje';
+        notify();
+      }
+      return;
+    }
 
     const now = new Date().toISOString();
     const newMsg: Message = {
@@ -818,111 +945,54 @@ export function useCrmStore() {
     advisorProfile: store.advisorProfile,
     userRole: store.userRole,
     isAuthenticated: store.isAuthenticated,
+    authReady: store.authReady,
+    authUnavailable: store.authUnavailable,
+    tenantIds: store.tenantIds,
+    activeTenantId: store.activeTenantId,
+    crmDataError: store.crmDataError,
 
-    login: useCallback((role: 'propietario' | 'gerente' | 'asesor', customEmail?: string, customName?: string) => {
-      state.isAuthenticated = true;
-      state.userRole = role;
-
-      let roleLabel = 'Propietario';
-      let name = 'Miky Delzar';
-      let email = `miky.delzar@${BRAND_CONFIG.emailDomain}`;
-
-      if (role === 'gerente') {
-        roleLabel = 'Gerente / Supervisor';
-        name = 'Lic. Sofía Alarcón';
-        email = `sofia.gerente@${BRAND_CONFIG.emailDomain}`;
-      } else if (role === 'asesor') {
-        roleLabel = 'Asesor de Ventas';
-        name = 'Miky Delzar';
-        email = `miky.delzar@${BRAND_CONFIG.emailDomain}`;
-      }
-
-      state.advisorProfile = {
-        ...state.advisorProfile,
-        role: roleLabel,
-        name: customName || name,
-        email: customEmail || email,
-      };
-
-      if (role === 'gerente' || role === 'asesor') {
-        if (state.activeTab !== 'inbox' && state.activeTab !== 'metrics') {
+    completeAuthCheck: useCallback((operator: OperatorSession | null, unavailable = false) => {
+      state.authReady = true;
+      state.authUnavailable = unavailable;
+      state.isAuthenticated = operator !== null;
+      state.tenantIds = operator?.tenantIds ?? [];
+      state.activeTenantId = state.tenantIds.length === 1 ? state.tenantIds[0] : null;
+      state.conversations = [];
+      state.messages = [];
+      state.selectedConversationId = null;
+      state.selectedMessageId = null;
+      state.crmDataError = null;
+      if (operator) {
+        const role = roleFromSession(operator.roles);
+        state.userRole = role;
+        state.advisorProfile = {
+          ...state.advisorProfile,
+          id: operator.operatorId,
+          name: operator.displayName,
+          email: operator.email,
+          role: roleLabel(role),
+        };
+        if (role !== 'propietario' && ['config', 'test-lab', 'events'].includes(state.activeTab)) {
           state.activeTab = 'inbox';
         }
-      }
-
-      if (role === 'asesor') {
-        const advisorConvs = state.conversations.filter(
-          (c: any) => c.assignedTo === state.advisorProfile.id
-        );
-        if (advisorConvs.length > 0 && !advisorConvs.some((c: any) => c.id === state.selectedConversationId)) {
-          state.selectedConversationId = advisorConvs[0].id;
-        }
-      }
-
-      try {
-        localStorage.setItem(STORAGE_KEYS.AUTH, 'true');
-        localStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
-        localStorage.setItem(STORAGE_KEYS.ADVISOR, JSON.stringify(state.advisorProfile));
-      } catch (e) {
-        console.warn('Failed to save auth state', e);
-      }
-      persist();
-      notify();
-    }, []),
-
-    logout: useCallback(() => {
-      state.isAuthenticated = false;
-      try {
-        localStorage.setItem(STORAGE_KEYS.AUTH, 'false');
-      } catch (e) {
-        console.warn('Failed to clear auth state', e);
       }
       notify();
     }, []),
 
-    setUserRole: useCallback((role: 'propietario' | 'gerente' | 'asesor') => {
-      state.userRole = role;
-      let roleLabel = 'Propietario';
-      let name = 'Miky Delzar';
-      let email = `miky.delzar@${BRAND_CONFIG.emailDomain}`;
-      
-      if (role === 'gerente') {
-        roleLabel = 'Gerente / Supervisor';
-        name = 'Lic. Sofía Alarcón';
-        email = `sofia.gerente@${BRAND_CONFIG.emailDomain}`;
-      } else if (role === 'asesor') {
-        roleLabel = 'Asesor de Ventas';
-        name = 'Miky Delzar';
-        email = `miky.delzar@${BRAND_CONFIG.emailDomain}`;
+    logout: useCallback(async () => {
+      try {
+        await logoutOperator();
+      } finally {
+        state.isAuthenticated = false;
+        state.activeTenantId = null;
+        state.authReady = true;
+        state.authUnavailable = false;
+        state.conversations = [];
+        state.messages = [];
+        state.selectedConversationId = null;
+        state.selectedMessageId = null;
+        notify();
       }
-
-      state.advisorProfile = {
-        ...state.advisorProfile,
-        role: roleLabel,
-        name,
-        email,
-      };
-
-      // Restrict activeTab based on permissions:
-      // Gerente and Asesor have access to inbox and metrics
-      if (role === 'gerente' || role === 'asesor') {
-        if (state.activeTab !== 'inbox' && state.activeTab !== 'metrics') {
-          state.activeTab = 'inbox';
-        }
-      }
-
-      // If switching to asesor, ensure selected conversation belongs to asesor
-      if (role === 'asesor') {
-        const advisorConvs = state.conversations.filter(
-          (c: any) => c.assignedTo === state.advisorProfile.id
-        );
-        if (advisorConvs.length > 0 && !advisorConvs.some((c: any) => c.id === state.selectedConversationId)) {
-          state.selectedConversationId = advisorConvs[0].id;
-        }
-      }
-
-      persist();
-      notify();
     }, []),
 
     setAdvisorStatus: useCallback((status: 'available' | 'in_meeting' | 'away') => {
@@ -965,18 +1035,44 @@ export function useCrmStore() {
     sendAgentMessage,
     sendCustomerMessage,
     fetchConversations: useCallback(async () => {
+      const tenantId = state.activeTenantId;
+      if (!state.isAuthenticated || !tenantId) {
+        state.conversations = [];
+        state.messages = [];
+        state.selectedConversationId = null;
+        state.crmDataError = state.tenantIds.length > 1 ? 'Selecciona una sucursal para cargar la bandeja.' : null;
+        notify();
+        return;
+      }
       try {
-        const res = await fetch('/api/v1/conversations');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.items)) {
-            // Update conversations from backend API
+        const page = await listConversations(tenantId);
+        state.conversations = page.items.map(toUiConversation);
+        state.messages = [];
+        state.selectedConversationId = state.conversations[0]?.id ?? null;
+        state.crmDataError = null;
+        notify();
+        if (state.selectedConversationId) {
+          const conversationId = state.selectedConversationId;
+          const messages = await listConversationMessages(tenantId, conversationId);
+          if (state.selectedConversationId === conversationId) {
+            const conversation = state.conversations.find((item) => item.id === conversationId);
+            if (conversation) state.messages = messages.items.map((message) => toUiMessage(message, conversation.channel));
             notify();
           }
         }
-      } catch (e) {
-        console.warn('Failed to fetch conversations via API:', e);
+      } catch (error) {
+        state.crmDataError = error instanceof Error ? error.message : 'No se pudieron cargar las conversaciones';
+        notify();
       }
+    }, []),
+    selectTenant: useCallback((tenantId: string) => {
+      if (!state.tenantIds.includes(tenantId)) return;
+      state.activeTenantId = tenantId;
+      state.conversations = [];
+      state.messages = [];
+      state.selectedConversationId = null;
+      state.crmDataError = null;
+      notify();
     }, []),
     clearEvents: useCallback(() => {
       state.events = [];

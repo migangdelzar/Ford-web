@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlaskConical, Play, RotateCcw } from 'lucide-react';
 import { ScenarioCard, ScenarioPreset, EvaluationResult } from '../../../features/test-lab/ui/ScenarioCard';
 import { DiagnosticVerdictCard } from '../../../features/test-lab/ui/DiagnosticVerdictCard';
 import { CustomTestInput } from '../../../features/test-lab/ui/CustomTestInput';
-import { evaluateBotResponseLocally } from '../../../features/test-lab/lib/evaluator';
-import { useCrmStore } from '../../../store/useCrmStore';
 import { Button, PageHeaderBlock, AtelierSectionLabel } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/SonnerToast';
+import { useCrmStore } from '../../../store/useCrmStore';
+import { sendAiTurn } from '../../../shared/api/fordServiceApi';
 
 const scenarioPresets: ScenarioPreset[] = [
   {
@@ -64,84 +64,61 @@ const scenarioPresets: ScenarioPreset[] = [
 
 export const TestLabWidget: React.FC = () => {
   const { t } = useTranslation();
-  const { botConfig } = useCrmStore();
   const { toast } = useToast();
+  const { advisorProfile, tenantIds } = useCrmStore();
 
   const [activeScenarioId, setActiveScenarioId] = useState<string>(scenarioPresets[0].id);
   const [results, setResults] = useState<EvaluationResult[]>([]);
   const [isRunningAll, setIsRunningAll] = useState(false);
   const [isRunningScenario, setIsRunningScenario] = useState(false);
   const [isEvaluatingCustom, setIsEvaluatingCustom] = useState(false);
+  const sessionStorageKey = `ford_testlab_conversation_id:${advisorProfile.id}`;
+  const [tenantId, setTenantId] = useState('');
+  const [conversationId, setConversationId] = useState(() => {
+    const saved = localStorage.getItem(sessionStorageKey);
+    const id = saved || crypto.randomUUID();
+    localStorage.setItem(sessionStorageKey, id);
+    return id;
+  });
+  const [requestError, setRequestError] = useState<string | null>(null);
 
-  const evaluateScenario = async (preset: ScenarioPreset): Promise<EvaluationResult> => {
+  useEffect(() => {
+    if (tenantIds.length === 1) setTenantId(tenantIds[0]);
+    else if (!tenantIds.includes(tenantId)) setTenantId('');
+  }, [tenantIds.join(','), tenantId]);
+
+  const evaluateScenario = async (preset: ScenarioPreset, sessionId: string = crypto.randomUUID()): Promise<EvaluationResult> => {
     const startTime = performance.now();
-
-    try {
-      const resp = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: preset.prompt,
-          conversationHistory: [],
-          customerName: 'Prospecto de Prueba',
-          config: {
-            systemPrompt: botConfig.systemPrompt,
-            mode: botConfig.mode,
-            handoffKeywords: botConfig.handoffKeywords,
-          },
-        }),
-      });
-
-      if (!resp.ok) throw new Error('Network error or server unavailable');
-      const data = await resp.json();
-      const endTime = performance.now();
-
-      const evaluation: EvaluationResult = {
-        id: `eval-${Date.now()}-${preset.id}`,
-        presetId: preset.id,
-        category: preset.category,
-        inputPrompt: preset.prompt,
-        title: preset.title,
-        replyText: data.reply || 'Sin respuesta generada.',
-        temperature: data.temperature || 'warm',
-        handoffSuggested: !!data.handoffSuggested,
-        handoffReason: data.handoffReason,
-        latencyMs: Math.round(endTime - startTime),
-        extractedFields: data.extractedFields || {},
-        isHandoffAccurate: !!data.handoffSuggested === preset.expectedHandoff,
-        timestamp: new Date().toISOString(),
-      };
-
-      return evaluation;
-    } catch {
-      const endTime = performance.now();
-      const localResult = evaluateBotResponseLocally(
-        preset.prompt,
-        botConfig.handoffKeywords,
-        botConfig.mode === 'off' ? 'autonomous' : 'autonomous'
-      );
-
-      return {
-        id: `eval-${Date.now()}-${preset.id}`,
-        presetId: preset.id,
-        category: preset.category,
-        inputPrompt: preset.prompt,
-        title: preset.title,
-        replyText: localResult.reply,
-        temperature: localResult.temperature,
-        handoffSuggested: localResult.handoffSuggested,
-        handoffReason: localResult.handoffReason,
-        latencyMs: Math.max(120, Math.round(endTime - startTime)),
-        extractedFields: localResult.extractedFields,
-        isHandoffAccurate: localResult.handoffSuggested === preset.expectedHandoff,
-        timestamp: new Date().toISOString(),
-        fallbackActive: true,
-      };
-    }
+    if (tenantIds.length > 1 && !tenantId) throw new Error('Selecciona una agencia antes de ejecutar la prueba.');
+    const data = await sendAiTurn({
+      conversationId: sessionId,
+      ...(tenantId ? { tenantId } : {}),
+      messages: [{ role: 'user', content: preset.prompt }],
+    });
+    const endTime = performance.now();
+    const temperature = String(data.suggestedTemperature || 'WARM').toLowerCase();
+    const resultConversationId = data.conversationId || sessionId;
+    return {
+      id: `eval-${Date.now()}-${preset.id}`,
+      presetId: preset.id,
+      category: preset.category,
+      inputPrompt: preset.prompt,
+      title: preset.title,
+      replyText: data.replyText || 'Sin respuesta generada.',
+      temperature: (['cold', 'warm', 'hot'].includes(temperature) ? temperature : 'warm') as 'cold' | 'warm' | 'hot',
+      handoffSuggested: Boolean(data.handoffSuggested),
+      handoffReason: data.handoffReason,
+      latencyMs: Math.round(endTime - startTime),
+      extractedFields: {},
+      isHandoffAccurate: Boolean(data.handoffSuggested) === preset.expectedHandoff,
+      timestamp: new Date().toISOString(),
+      conversationId: resultConversationId,
+    };
   };
 
   const handleRunSingleScenario = async (preset: ScenarioPreset) => {
     setIsRunningScenario(true);
+    setRequestError(null);
     try {
       const res = await evaluateScenario(preset);
       setResults((prev) => [res, ...prev.filter((r) => r.presetId !== preset.id)]);
@@ -150,7 +127,8 @@ export const TestLabWidget: React.FC = () => {
         title: t('testLab.evaluated', 'Evaluación completada'),
         description: `Escenario "${preset.title}" diagnosticado con éxito.`,
       });
-    } catch {
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : 'Ford-service request failed');
       toast({
         type: 'error',
         title: t('common.error', 'Error'),
@@ -164,19 +142,23 @@ export const TestLabWidget: React.FC = () => {
   const handleRunAllScenarios = async () => {
     setIsRunningAll(true);
     const newResults: EvaluationResult[] = [];
-
-    for (const preset of scenarioPresets) {
-      const res = await evaluateScenario(preset);
-      newResults.push(res);
+    setRequestError(null);
+    try {
+      for (const preset of scenarioPresets) {
+        const res = await evaluateScenario(preset);
+        newResults.push(res);
+      }
+      setResults(newResults);
+      toast({
+        type: 'success',
+        title: t('testLab.batchComplete', 'Batería finalizada'),
+        description: `${newResults.length} escenarios fueron evaluados.`
+      });
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : 'Ford-service request failed');
+    } finally {
+      setIsRunningAll(false);
     }
-
-    setResults(newResults);
-    setIsRunningAll(false);
-    toast({
-      type: 'success',
-      title: t('testLab.batchComplete', 'Batería finalizada'),
-      description: `${scenarioPresets.length} escenarios fueron evaluados.`,
-    });
   };
 
   const handleRunCustom = async (customPrompt: string) => {
@@ -192,7 +174,10 @@ export const TestLabWidget: React.FC = () => {
     };
 
     try {
-      const res = await evaluateScenario(customPreset);
+      setRequestError(null);
+      const res = await evaluateScenario(customPreset, conversationId);
+      setConversationId(res.conversationId || conversationId);
+      localStorage.setItem(sessionStorageKey, res.conversationId || conversationId);
       setResults((prev) => [res, ...prev]);
       setActiveScenarioId(customPreset.id);
       toast({
@@ -200,7 +185,8 @@ export const TestLabWidget: React.FC = () => {
         title: t('testLab.evaluated', 'Evaluación completada'),
         description: 'Diagnóstico generado para tu consulta personalizada.',
       });
-    } catch {
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : 'Ford-service request failed');
       toast({
         type: 'error',
         title: t('common.error', 'Error'),
@@ -235,6 +221,20 @@ export const TestLabWidget: React.FC = () => {
               )}
 
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const nextId = crypto.randomUUID();
+                  setConversationId(nextId);
+                  localStorage.setItem(sessionStorageKey, nextId);
+                  setRequestError(null);
+                }}
+                className="rounded-full border-black/[0.04] bg-white shadow-2xs text-xs px-3 py-1 cursor-pointer"
+              >
+                Nueva sesión
+              </Button>
+
+              <Button
                 variant="primary"
                 size="sm"
                 isLoading={isRunningAll}
@@ -248,6 +248,27 @@ export const TestLabWidget: React.FC = () => {
             </>
           }
         />
+
+        {requestError && (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            No se completó la llamada a Ford-service: {requestError}
+          </div>
+        )}
+        <p className="text-[11px] text-slate-500">Sesión para consultas personalizadas: {conversationId}</p>
+        {tenantIds.length > 1 && (
+          <label className="block max-w-sm text-xs text-slate-600">
+            Agencia para esta prueba
+            <select
+              aria-label="Agencia para esta prueba"
+              value={tenantId}
+              onChange={(event) => setTenantId(event.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2"
+            >
+              <option value="">Selecciona una agencia</option>
+              {tenantIds.map((id) => <option key={id} value={id}>{id}</option>)}
+            </select>
+          </label>
+        )}
 
         {/* Split Sandbox */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">

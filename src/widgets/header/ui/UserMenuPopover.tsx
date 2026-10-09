@@ -58,14 +58,18 @@ export const UserMenuPopover: React.FC<UserMenuPopoverProps> = ({ isOpen, onClos
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     onClose();
-    logout();
-    toast({
-      type: 'info',
-      title: t('login.sessionEnded'),
-      description: t('header.logoutDescription', { brand: t('brand.name') }),
-    });
+    try {
+      await logout();
+      toast({
+        type: 'info',
+        title: t('login.sessionEnded'),
+        description: t('header.logoutDescription', { brand: t('brand.name') }),
+      });
+    } catch {
+      toast({ type: 'error', title: 'No se pudo cerrar la sesión en el servidor.' });
+    }
   };
 
   return (

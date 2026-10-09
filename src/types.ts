@@ -59,6 +59,7 @@ export interface Message {
 
 export interface Conversation {
   id: string;
+  version?: number;
   channel: Channel;
   customerName: string;
   customerHandle: string; // Phone for WA, @handle for IG, Name for Messenger

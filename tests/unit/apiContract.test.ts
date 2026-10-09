@@ -41,7 +41,10 @@ describe('published API contract', () => {
     expect(webJson).toEqual(expected);
   });
 
-  it('documents the authenticated Test Lab BFF route', () => {
-    expect(webRoot.paths['/api/testlab/respond']?.post).toBeDefined();
+  it('documents CSRF-aware OTP auth and uses the canonical AI endpoint for Test Lab', () => {
+    expect(webRoot.paths['/api/auth/csrf']?.get).toBeDefined();
+    expect(webRoot.paths['/api/auth/one-time-token']?.post).toBeDefined();
+    expect(webRoot.paths['/api/v1/ai/respond']?.post).toBeDefined();
+    expect(webRoot.paths['/api/testlab/respond']).toBeUndefined();
   });
 });

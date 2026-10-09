@@ -44,6 +44,56 @@ paths:
               schema: { type: string }
         '400':
           $ref: '#/components/responses/BffBadRequest'
+  /api/auth/csrf:
+    get:
+      tags: [Authentication]
+      summary: Initialize same-origin CSRF protection for login recovery
+      operationId: getLoginCsrfToken
+      security: []
+      responses:
+        '200':
+          description: CSRF token and request header name; framework cookie is set.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, headerName]
+                properties:
+                  token: { type: string }
+                  headerName: { type: string, const: X-XSRF-TOKEN }
+        '502':
+          $ref: '#/components/responses/BffUnavailable'
+  /api/auth/one-time-token:
+    post:
+      tags: [Authentication]
+      summary: Request email one-time-token recovery link
+      operationId: requestEmailOneTimeToken
+      description: Returns the same accepted response for registered and unknown addresses.
+      security: []
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string, format: email }
+      responses:
+        '202':
+          description: Request accepted. An eligible operator receives a sign-in link.
+        '403':
+          description: CSRF validation failed.
+        '502':
+          $ref: '#/components/responses/BffUnavailable'
   /api/auth/me:
     get:
       tags: [Authentication]
@@ -74,32 +124,6 @@ paths:
               schema: { type: string }
         '401':
           $ref: '#/components/responses/SessionUnauthorized'
-  /api/testlab/respond:
-    post:
-      tags: [Test lab]
-      summary: Run an authenticated Test Lab turn
-      operationId: respondInTestLab
-      security:
-        - bffSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/TestLabRequest' }
-      responses:
-        '200':
-          description: Ford-service response for the stable Test Lab session.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/AiRespondResponse' }
-        '400':
-          $ref: '#/components/responses/BffBadRequest'
-        '401':
-          $ref: '#/components/responses/SessionUnauthorized'
-        '403':
-          description: Operator is not authorized for the selected tenant.
-        '502':
-          $ref: '#/components/responses/BffUnavailable'
 components:
   securitySchemes:
     bffSession:
@@ -120,12 +144,6 @@ components:
         tenantIds:
           type: array
           items: { type: string, format: uuid }
-    TestLabRequest:
-      type: object
-      required: [message, conversationId]
-      properties:
-        message: { type: string, minLength: 1, maxLength: 5000 }
-        conversationId: { type: string, format: uuid }
   responses:
     BffBadRequest:
       description: Request is malformed or invalid.

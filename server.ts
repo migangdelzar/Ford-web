@@ -4,13 +4,25 @@ import fs from "fs";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { createBffProxy } from "./src/server/bffProxy";
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: false, limit: "16kb" }));
+
+const fordBffUrl = process.env.FORD_BFF_URL?.trim();
+if (fordBffUrl) {
+  app.use(['/api/auth', '/api/v1'], createBffProxy(fordBffUrl));
+} else {
+  app.use(['/api/auth', '/api/v1'], (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(503).json({ error: 'ford_bff_not_configured' });
+  });
+}
 
 // Initialize Gemini SDK with telemetry header
 const apiKey = process.env.GEMINI_API_KEY;
@@ -381,52 +393,6 @@ app.get("/api/docs", (_req, res) => {
     </body>
     </html>
   `);
-});
-
-// Authentication & Session Endpoints
-let activeUser = {
-  id: "usr-01",
-  name: "Carlos Mendoza",
-  email: "mendoza@forduruapan.com.mx",
-  role: "propietario",
-  branch: "Agencia Ford Uruapan",
-  avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-};
-
-app.post("/api/auth/login", (req, res) => {
-  const { email, role } = req.body || {};
-  activeUser.email = email || activeUser.email;
-  if (role && ["propietario", "gerente", "asesor"].includes(role)) {
-    activeUser.role = role;
-  }
-  res.json({
-    token: "mock-jwt-token-ford-uruapan-" + Date.now(),
-    user: activeUser,
-    message: "Sesión iniciada exitosamente",
-  });
-});
-
-app.post("/api/auth/logout", (_req, res) => {
-  res.json({
-    success: true,
-    message: "Sesión cerrada correctamente. Token revocado.",
-  });
-});
-
-app.get("/api/auth/me", (_req, res) => {
-  res.json(activeUser);
-});
-
-app.post("/api/auth/switch-role", (req, res) => {
-  const { targetRole } = req.body || {};
-  if (targetRole && ["propietario", "gerente", "asesor"].includes(targetRole)) {
-    activeUser.role = targetRole;
-    return res.json({
-      user: activeUser,
-      message: `Rol de sesión cambiado a ${targetRole}`,
-    });
-  }
-  return res.status(400).json({ error: "Rol inválido. Opciones válidas: propietario, gerente, asesor" });
 });
 
 // Mock Initial Conversations API

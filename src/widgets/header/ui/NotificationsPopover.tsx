@@ -27,7 +27,7 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({
   onOpenSettings,
 }) => {
   const { t } = useTranslation();
-  const { conversations, selectConversation, setActiveTab } = useCrmStore();
+  const { conversations, messages, selectConversation, setActiveTab } = useCrmStore();
   const { isSubscribed, togglePushSubscription, sendTestPush } = useWebNotifications();
   const { toast } = useToast();
 
@@ -177,7 +177,9 @@ export const NotificationsPopover: React.FC<NotificationsPopoverProps> = ({
                       <p className="text-[11px] text-slate-600 truncate mt-0.5 max-w-[230px]">
                         {isWaiting
                           ? 'Solicita atención de asesor humano'
-                          : conv.lastMessage}
+                          : messages
+                              .filter((message) => message.conversationId === conv.id)
+                              .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))[0]?.content || 'Sin mensajes'}
                       </p>
                     </div>
                   </div>

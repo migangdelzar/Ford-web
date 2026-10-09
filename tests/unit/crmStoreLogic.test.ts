@@ -1,13 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCrmStore } from '../../src/store/useCrmStore';
 
 describe('useCrmStore State & Logic', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     const { result } = renderHook(() => useCrmStore());
     act(() => {
       result.current.resetAllData();
-      result.current.login('propietario');
+      result.current.completeAuthCheck({ operatorId: 'op-1', displayName: 'Admin', email: 'admin@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'] });
+      // Unit tests exercise simulated store actions; production auth clears demo records.
+      result.current.resetAllData();
     });
   });
 
@@ -41,18 +44,27 @@ describe('useCrmStore State & Logic', () => {
     expect(updated?.leadTemperature).toBe('hot');
   });
 
-  it('toggles takeover between bot and human mode', () => {
+  it('toggles takeover through the backend between bot and human mode', async () => {
+    const activeTicket = { id: 'handoff-1', conversationId: 'conv-1', tenantId: 'tenant-1', status: 'HUMAN_ACTIVE', version: 1 };
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
+      .mockResolvedValueOnce(Response.json(activeTicket))
+      .mockResolvedValueOnce(Response.json({ id: 'conv-1', tenantId: 'tenant-1', channel: 'WHATSAPP', state: 'HUMAN_ACTIVE', version: 2, participant: { providerId: 'p1' }, updatedAt: '2026-10-09T00:00:00Z' }))
+      .mockResolvedValueOnce(Response.json({ items: [activeTicket], pageSize: 1, hasNext: false }))
+      .mockResolvedValueOnce(Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
+      .mockResolvedValueOnce(Response.json({ ...activeTicket, status: 'CLOSED', version: 2 }))
+      .mockResolvedValueOnce(Response.json({ id: 'conv-1', tenantId: 'tenant-1', channel: 'WHATSAPP', state: 'BOT_ACTIVE', version: 3, participant: { providerId: 'p1' }, updatedAt: '2026-10-09T00:01:00Z' })));
     const { result } = renderHook(() => useCrmStore());
     const convId = result.current.conversations[0].id;
     
-    act(() => {
-      result.current.setTakeover(convId, 'human');
+    await act(async () => {
+      await result.current.setTakeover(convId, 'human');
     });
     let conv = result.current.allConversations.find((c) => c.id === convId);
     expect(conv?.status).toBe('human');
 
-    act(() => {
-      result.current.setTakeover(convId, 'bot');
+    await act(async () => {
+      await result.current.setTakeover(convId, 'bot');
     });
     conv = result.current.allConversations.find((c) => c.id === convId);
     expect(conv?.status).toBe('bot');

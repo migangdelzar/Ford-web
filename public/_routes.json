@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "include": [
+    "/api/*",
+    "/oauth2/*",
+    "/.well-known/*",
+    "/login/*",
+    "/webauthn/*"
+  ],
+  "exclude": []
+}

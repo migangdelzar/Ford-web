@@ -24,7 +24,7 @@ describe('DashboardWidget Component', () => {
   it('adapts terminology for Asesor role', () => {
     const { result } = renderHook(() => useCrmStore());
     act(() => {
-      result.current.login('asesor');
+      result.current.completeAuthCheck({ operatorId: 'op-1', displayName: 'Advisor', email: 'advisor@example.com', roles: ['OPERATOR'], tenantIds: ['tenant-1'] });
     });
 
     render(<DashboardWidget />);
@@ -35,7 +35,7 @@ describe('DashboardWidget Component', () => {
   it('renders Telemetría IA tab for Propietario and switches to it', () => {
     const { result } = renderHook(() => useCrmStore());
     act(() => {
-      result.current.login('propietario');
+      result.current.completeAuthCheck({ operatorId: 'op-1', displayName: 'Admin', email: 'admin@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'] });
     });
 
     render(<DashboardWidget />);

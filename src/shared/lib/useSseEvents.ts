@@ -19,15 +19,13 @@ export interface SseRealtimeEvent {
   data: SseMessageCreatedData;
 }
 
-export function useSseEvents() {
+export function useSseEvents(enabled = false, tenantId: string | null = null) {
   const store = useCrmStore();
 
   useEffect(() => {
-    const tenantId = import.meta.env.VITE_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-    const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://ford.emme.business';
-    const cleanBaseUrl = rawBaseUrl.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
-
-    const streamUrl = `${cleanBaseUrl}/api/v1/operator/events/stream?tenantId=${encodeURIComponent(tenantId)}`;
+    if (!enabled || !tenantId) return;
+    const query = `?tenantId=${encodeURIComponent(tenantId)}`;
+    const streamUrl = `/api/v1/operator/events/stream${query}`;
 
     let events: EventSource | null = null;
 
@@ -78,5 +76,5 @@ export function useSseEvents() {
         events.close();
       }
     };
-  }, [store]);
+  }, [enabled, tenantId, store]);
 }

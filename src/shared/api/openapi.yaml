@@ -43,7 +43,8 @@ x-authentication:
     authenticationOptions: /webauthn/authenticate/options
     authentication: /login/webauthn
   emailOneTimeTokenEndpoints:
-    generate: /ott/generate
+    csrf: /api/auth/csrf
+    generate: /api/auth/one-time-token
     submit: /login/ott
   requiredJwtClaims:
     - iss
@@ -70,6 +71,7 @@ x-authentication:
     SameSite session cookie. Never embed signing keys or OAuth client secrets
     in frontend JavaScript.
 tags:
+  - name: Authentication
   - name: Health
   - name: AI
   - name: Conversations
@@ -85,7 +87,6 @@ tags:
   - name: Events
   - name: Test lab
   - name: Meta webhooks
-  - name: Authentication
 security:
   - bearerAuth: []
 paths:
@@ -136,6 +137,27 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/UpstreamUnavailable"
+  /api/v1/operator/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get the authenticated operator profile
+      description: Returns the enabled operator identity and tenant memberships from the backend registry.
+      operationId: getCurrentOperatorProfile
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current operator profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSession"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/conversations:
     get:
       tags:
@@ -278,6 +300,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/TenantId"
       requestBody:
         required: false
         content:
@@ -307,12 +330,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/ConversationId"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/HandbackRequest"
+        - $ref: "#/components/parameters/ExpectedVersion"
       responses:
         "200":
           description: Closed handoff
@@ -1135,6 +1153,29 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+  /api/v1/operator/events/stream:
+    get:
+      tags:
+        - Events
+      operationId: streamOperatorEvents
+      summary: Stream tenant-scoped operator events
+      description: Streams realtime events only for a tenant present in the authenticated operator token.
+      x-implementation-status: implemented
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Realtime operator event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/test-lab/faults:
     get:
       tags:
@@ -1330,6 +1371,68 @@ paths:
                 type: string
         "400":
           $ref: "#/components/responses/BffBadRequest"
+  /api/auth/csrf:
+    get:
+      tags:
+        - Authentication
+      summary: Initialize same-origin CSRF protection for login recovery
+      operationId: getLoginCsrfToken
+      security: []
+      responses:
+        "200":
+          description: CSRF token and request header name; framework cookie is set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - token
+                  - headerName
+                properties:
+                  token:
+                    type: string
+                  headerName:
+                    type: string
+                    const: X-XSRF-TOKEN
+        "502":
+          $ref: "#/components/responses/BffUnavailable"
+  /api/auth/one-time-token:
+    post:
+      tags:
+        - Authentication
+      summary: Request email one-time-token recovery link
+      operationId: requestEmailOneTimeToken
+      description: Returns the same accepted response for registered and unknown addresses.
+      security: []
+      parameters:
+        - name: X-XSRF-TOKEN
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - username
+              properties:
+                username:
+                  type: string
+                  format: email
+      responses:
+        "202":
+          description: Request accepted. An eligible operator receives a sign-in link.
+        "403":
+          description: CSRF validation failed.
+        "502":
+          $ref: "#/components/responses/BffUnavailable"
   /api/auth/me:
     get:
       tags:
@@ -1364,35 +1467,6 @@ paths:
                 type: string
         "401":
           $ref: "#/components/responses/SessionUnauthorized"
-  /api/testlab/respond:
-    post:
-      tags:
-        - Test lab
-      summary: Run an authenticated Test Lab turn
-      operationId: respondInTestLab
-      security:
-        - bffSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TestLabRequest"
-      responses:
-        "200":
-          description: Ford-service response for the stable Test Lab session.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiRespondResponse"
-        "400":
-          $ref: "#/components/responses/BffBadRequest"
-        "401":
-          $ref: "#/components/responses/SessionUnauthorized"
-        "403":
-          description: Operator is not authorized for the selected tenant.
-        "502":
-          $ref: "#/components/responses/BffUnavailable"
 components:
   securitySchemes:
     bearerAuth:
@@ -1711,6 +1785,36 @@ components:
           type: array
           items:
             type: string
+    OperatorSession:
+      type: object
+      required:
+        - operatorId
+        - displayName
+        - email
+        - roles
+        - tenantIds
+      properties:
+        operatorId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+              - OPERATOR
+              - MANAGER
+              - ADMIN
+        tenantIds:
+          type: array
+          items:
+            type: string
+            format: uuid
     ProblemDetail:
       type: object
       required:
@@ -2229,20 +2333,6 @@ components:
         reason:
           type: string
           maxLength: 500
-        expectedVersion:
-          type: integer
-          format: int64
-          minimum: 0
-    HandbackRequest:
-      type: object
-      properties:
-        summary:
-          type: string
-          maxLength: 4000
-        expectedVersion:
-          type: integer
-          format: int64
-          minimum: 0
     HandoffRequest:
       type: object
       required:
@@ -2881,46 +2971,3 @@ components:
         detail:
           type: string
           nullable: true
-    OperatorSession:
-      type: object
-      required:
-        - operatorId
-        - displayName
-        - email
-        - roles
-        - tenantIds
-      properties:
-        operatorId:
-          type: string
-          format: uuid
-        displayName:
-          type: string
-        email:
-          type: string
-          format: email
-        roles:
-          type: array
-          items:
-            type: string
-            enum:
-              - OPERATOR
-              - MANAGER
-              - ADMIN
-        tenantIds:
-          type: array
-          items:
-            type: string
-            format: uuid
-    TestLabRequest:
-      type: object
-      required:
-        - message
-        - conversationId
-      properties:
-        message:
-          type: string
-          minLength: 1
-          maxLength: 5000
-        conversationId:
-          type: string
-          format: uuid

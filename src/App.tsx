@@ -15,12 +15,16 @@ import { CookieConsentBanner } from './features/compliance/ui/CookieConsentBanne
 import { LegalModal, LegalTab } from './features/compliance/ui/LegalModal';
 import { useSseEvents } from './shared/lib/useSseEvents';
 import { OfflineIndicator } from './shared/lib/pwa';
+import { readOperatorSession } from './shared/api/operatorAuth';
 
 export function AppContent() {
-  useSseEvents();
-
+  const store = useCrmStore();
   const {
     isAuthenticated,
+    authReady,
+    authUnavailable,
+    activeTenantId,
+    completeAuthCheck,
     activeTab,
     setActiveTab,
     conversations,
@@ -28,7 +32,22 @@ export function AppContent() {
     selectConversation,
     channelFilter,
     userRole,
-  } = useCrmStore();
+    fetchConversations,
+  } = store;
+
+  useSseEvents(isAuthenticated, activeTenantId);
+
+  useEffect(() => {
+    let active = true;
+    readOperatorSession()
+      .then((operator) => { if (active) completeAuthCheck(operator); })
+      .catch(() => { if (active) completeAuthCheck(null, true); });
+    return () => { active = false; };
+  }, [completeAuthCheck]);
+
+  useEffect(() => {
+    if (isAuthenticated && activeTenantId) void fetchConversations();
+  }, [isAuthenticated, activeTenantId, fetchConversations]);
 
   const [legalModalOpen, setLegalModalOpen] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState<LegalTab>('privacy');
@@ -90,10 +109,15 @@ export function AppContent() {
   }, [isAuthenticated, conversations, selectedConversationId, channelFilter, selectConversation]);
 
   // If not logged in, enforce the official Login Portal flow
+  if (!authReady) {
+    return <div className="min-h-screen grid place-items-center text-sm text-slate-500">Verificando sesión…</div>;
+  }
+
   if (!isAuthenticated) {
     return (
       <>
         <LoginPage
+          authUnavailable={authUnavailable}
           onOpenLegalModal={(tab) => {
             setLegalModalTab(tab);
             setLegalModalOpen(true);

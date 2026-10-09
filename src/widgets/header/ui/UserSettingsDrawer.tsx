@@ -52,7 +52,6 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
     setAdvisorStatus,
     updateAdvisorProfile,
     userRole,
-    setUserRole,
     resetAllData,
     logout,
     setActiveTab,
@@ -114,17 +113,6 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
     });
   };
 
-  const handleRoleSwitch = (role: 'propietario' | 'gerente' | 'asesor') => {
-    setUserRole(role);
-    soundFx.playClick();
-    const roleLabel =
-      role === 'propietario' ? 'Propietario / Admin' : role === 'gerente' ? 'Gerente / Supervisor' : 'Asesor de Ventas';
-    toast({
-      type: 'info',
-      title: `Vista cambiada a ${roleLabel}`,
-    });
-  };
-
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!draftName.trim()) return;
@@ -174,14 +162,18 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
     });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     onClose();
-    logout();
-    toast({
-      type: 'info',
-      title: t('login.sessionEnded', 'Sesión finalizada'),
-      description: t('header.logoutDescription', { brand: t('brand.name') }),
-    });
+    try {
+      await logout();
+      toast({
+        type: 'info',
+        title: t('login.sessionEnded', 'Sesión finalizada'),
+        description: t('header.logoutDescription', { brand: t('brand.name') }),
+      });
+    } catch {
+      toast({ type: 'error', title: 'No se pudo cerrar la sesión en el servidor.' });
+    }
   };
 
   return (
@@ -419,44 +411,6 @@ export const UserSettingsDrawer: React.FC<UserSettingsDrawerProps> = ({
                           );
                         })}
                       </div>
-                    </div>
-
-                    {/* Role Switcher for Demo / Multi-Role Inspection */}
-                    <div className="pt-4 border-t border-slate-100">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <h3 className="text-xs font-semibold text-slate-900">
-                          Rol y nivel de acceso
-                        </h3>
-                        <span className="text-[11px] text-slate-500">Permisos RBAC</span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl">
-                        {(
-                          [
-                            { id: 'propietario', label: 'Propietario' },
-                            { id: 'gerente', label: 'Gerente' },
-                            { id: 'asesor', label: 'Asesor' },
-                          ] as const
-                        ).map((r) => (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() => handleRoleSwitch(r.id)}
-                            className={`py-2 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                              userRole === r.id
-                                ? 'bg-white text-[#0071E3] shadow-xs'
-                                : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                          >
-                            {r.label}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
-                        {userRole === 'propietario'
-                          ? 'Acceso total a Bandeja, Métricas, Estado de Servicios, Reglas IA, Diagnóstico y Auditoría.'
-                          : 'Vista operativa enfocada en Bandeja Omnicanal, Métricas Comerciales y Estado de Servicios.'}
-                      </p>
                     </div>
 
                     {/* Profile Details & Quick Edit */}

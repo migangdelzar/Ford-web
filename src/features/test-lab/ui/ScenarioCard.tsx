@@ -27,6 +27,7 @@ export interface EvaluationResult {
   isHandoffAccurate: boolean;
   timestamp: string;
   fallbackActive?: boolean;
+  conversationId?: string;
 }
 
 interface ScenarioCardProps {
