@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --color-app-bg: #F8F9FB;
+  --color-app-card: #FFFFFF;
+  --color-app-border: #EEF0F3;
+
+  --color-apple-dark: #1D1D1F;
+  --color-apple-neutral: #F5F5F7;
+  --color-apple-blue: #0071E3;
+  --color-apple-green: #34C759;
+  --color-apple-secondary: #86868B;
+
+  --color-text-900: #1C1E26;
+  --color-text-500: #6B7280;
+  --color-text-400: #9CA3AF;
+
+  --color-sidebar-bg: #FFFFFF;
+  --color-sidebar-text: #6B7280;
+
+  --color-primary: #0071E3;
+  --color-primary-600: #005bb5;
+  --color-primary-100: #E8F1FF;
+  --color-primary-50: #F4F9FF;
+
+  --color-accent-primary: #0071E3;
+  --color-accent-hover: #005bb5;
+  --color-accent-soft: #E8F1FF;
+
+  --color-cat-1: #0071E3;
+  --color-cat-2: #9CA3AF;
+  --color-cat-3: #C9A24B;
+  --color-cat-4: #B37B99;
+  --color-cat-5: #9CA3AF;
+
+  --color-semantic-success: #34C759;
+  --color-semantic-warning: #FF9500;
+  --color-semantic-danger: #FF3B30;
+  --color-semantic-info: #0071E3;
+}
+
+@layer utilities {
+  .font-display {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer base {
+  body {
+    background-color: #F8F9FB;
+    color: #1C1E26;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom minimal scrollbar for dense panels */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+}

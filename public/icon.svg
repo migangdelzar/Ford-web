@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#003478" />
+      <stop offset="100%" stop-color="#0071E3" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <ellipse cx="256" cy="256" rx="188" ry="86" fill="none" stroke="#FFFFFF" stroke-width="14" opacity="0.95" />
+  <ellipse cx="256" cy="256" rx="170" ry="70" fill="none" stroke="#FFFFFF" stroke-width="4" opacity="0.45" />
+  <text x="256" y="276" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="68" font-weight="800" font-style="italic" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">FORD</text>
+  <circle cx="400" cy="136" r="28" fill="#16A34A" stroke="#FFFFFF" stroke-width="8" />
+</svg>

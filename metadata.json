@@ -1,0 +1,8 @@
+{
+  "name": "Ford Meta CRM",
+  "description": "A minimal omnichannel inbox to monitor and test AI service behavior across WhatsApp, Instagram DM, and Messenger.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

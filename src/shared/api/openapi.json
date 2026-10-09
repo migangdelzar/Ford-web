@@ -1,0 +1,395 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ford AI Operator API",
+    "version": "1.0.0",
+    "description": "Contract-first API for the Ford operator application.\n\nThis document contains the canonical `/api/v1` frontend contract and the provider-only Meta webhook routes. Operations marked with `x-implementation-status: planned` are not available until their backend implementation is released. Authentication is provided by the deployment's external OIDC provider; this backend is a resource server and does not issue login tokens.",
+    "contact": {
+      "name": "Ford AI Service"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://ford.emme.business",
+      "description": "Production public origin"
+    },
+    {
+      "url": "http://localhost:8080",
+      "description": "Local backend origin"
+    }
+  ],
+  "x-authentication": {
+    "providerType": "oidc",
+    "discoveryUrl": "${FORD_SECURITY_ISSUER_URI}/.well-known/openid-configuration",
+    "audience": "${FORD_SECURITY_AUDIENCE}",
+    "browserFlow": "authorization_code_pkce",
+    "recommendedDeployment": "bff",
+    "requiredJwtClaims": [
+      "iss",
+      "aud",
+      "sub",
+      "exp",
+      "nbf",
+      "roles",
+      "tenant_id_or_tenant_ids"
+    ],
+    "roleValues": ["OPERATOR", "MANAGER", "ADMIN"],
+    "currentScopes": ["openid", "profile", "email", "operator:read", "operator:write", "handoff:manage"]
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Check service availability",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Service is available",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/respond": {
+      "post": {
+        "tags": ["AI"],
+        "summary": "Generate a display-safe assistant response",
+        "operationId": "respondWithAi",
+        "responses": {
+          "200": {
+            "description": "Assistant response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AiRespondResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations": {
+      "get": {
+        "tags": ["Conversations"],
+        "summary": "List conversations",
+        "responses": {
+          "200": {
+            "description": "Conversation page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConversationPage" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversationId}": {
+      "get": {
+        "tags": ["Conversations"],
+        "summary": "Get a conversation",
+        "responses": {
+          "200": {
+            "description": "Conversation",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Conversation" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversationId}/messages": {
+      "get": {
+        "tags": ["Messages"],
+        "summary": "List conversation messages",
+        "responses": {
+          "200": {
+            "description": "Message page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessagePage" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Messages"],
+        "summary": "Send an operator message",
+        "responses": {
+          "202": {
+            "description": "Message accepted for delivery",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CommandReceipt" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversationId}/takeover": {
+      "post": {
+        "tags": ["Handoffs"],
+        "summary": "Take over a conversation",
+        "responses": {
+          "200": {
+            "description": "Active handoff",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HandoffTicket" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversationId}/handback": {
+      "post": {
+        "tags": ["Handoffs"],
+        "summary": "Return a conversation to the bot",
+        "responses": {
+          "200": {
+            "description": "Closed handoff",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HandoffTicket" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/handoffs": {
+      "get": {
+        "tags": ["Handoffs"],
+        "summary": "List handoff tickets",
+        "responses": {
+          "200": {
+            "description": "Handoff page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HandoffPage" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Handoffs"],
+        "summary": "Request a human handoff",
+        "responses": {
+          "201": {
+            "description": "Handoff created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HandoffTicket" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/overview": {
+      "get": {
+        "tags": ["Metrics"],
+        "summary": "Get operational overview metrics",
+        "responses": {
+          "200": {
+            "description": "Operational overview",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MetricsOverview" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/bot": {
+      "get": {
+        "tags": ["Metrics"],
+        "summary": "Get bot metrics",
+        "responses": {
+          "200": {
+            "description": "Bot metrics",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BotMetrics" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/leads": {
+      "get": {
+        "tags": ["Metrics"],
+        "summary": "Get lead temperature metrics",
+        "responses": {
+          "200": {
+            "description": "Lead metrics",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LeadMetrics" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/leads": {
+      "get": {
+        "tags": ["Leads"],
+        "summary": "List leads",
+        "responses": {
+          "200": {
+            "description": "Lead page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LeadPage" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory": {
+      "get": {
+        "tags": ["Vehicles"],
+        "summary": "Search available inventory",
+        "responses": {
+          "200": {
+            "description": "Vehicle inventory page",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VehiclePage" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/finance/quote": {
+      "post": {
+        "tags": ["Finance"],
+        "summary": "Calculate finance estimate",
+        "responses": {
+          "200": {
+            "description": "Finance estimate",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FinanceQuote" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appointments/book": {
+      "post": {
+        "tags": ["Appointments"],
+        "summary": "Book a test drive",
+        "responses": {
+          "201": {
+            "description": "Appointment booked",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Appointment" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/team/advisors": {
+      "get": {
+        "tags": ["Advisors"],
+        "summary": "List team advisors",
+        "responses": {
+          "200": {
+            "description": "Advisor list"
+          }
+        }
+      }
+    },
+    "/api/v1/bot/config": {
+      "get": {
+        "tags": ["Bot configuration"],
+        "summary": "Get bot config",
+        "responses": {
+          "200": {
+            "description": "Bot config view",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BotConfigView" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthStatus": {
+        "type": "object",
+        "required": ["status", "timestamp"],
+        "properties": {
+          "status": { "type": "string", "enum": ["ok"] },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AiRespondResponse": {
+        "type": "object",
+        "required": ["replyText", "suggestedTemperature", "handoffSuggested", "handoffReason", "intent", "leadStage", "toolFamily", "sourceDocumentIds"],
+        "properties": {
+          "replyText": { "type": "string" },
+          "suggestedTemperature": { "type": "string", "enum": ["UNKNOWN", "COLD", "WARM", "HOT"] },
+          "handoffSuggested": { "type": "boolean" },
+          "handoffReason": { "type": "string" },
+          "intent": { "type": "string" },
+          "leadStage": { "type": "string" },
+          "toolFamily": { "type": "string" },
+          "sourceDocumentIds": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ConversationPage": {
+        "type": "object",
+        "required": ["items", "page"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Conversation" } },
+          "page": { "$ref": "#/components/schemas/PageInfo" }
+        }
+      },
+      "Conversation": {
+        "type": "object",
+        "required": ["id", "tenantId", "channel", "state", "version", "participant", "updatedAt"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "tenantId": { "type": "string", "format": "uuid" },
+          "channel": { "type": "string", "enum": ["WHATSAPP", "MESSENGER", "INSTAGRAM"] },
+          "state": { "type": "string", "enum": ["BOT_ACTIVE", "LEAD_CAPTURE", "HUMAN_PENDING", "HUMAN_ACTIVE", "CLOSED"] },
+          "version": { "type": "integer", "format": "int64" },
+          "participant": { "type": "object" },
+          "assignedOperatorId": { "type": "string", "format": "uuid", "nullable": true },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PageInfo": {
+        "type": "object",
+        "required": ["pageSize", "hasNext"],
+        "properties": {
+          "pageSize": { "type": "integer" },
+          "nextCursor": { "type": "string", "nullable": true },
+          "hasNext": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
