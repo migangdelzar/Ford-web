@@ -1,0 +1,144 @@
+tags:
+  - name: Authentication
+  - name: Test lab
+paths:
+  /api/auth/login:
+    get:
+      tags: [Authentication]
+      summary: Start operator sign-in
+      description: Starts an authorization-code flow with PKCE through Spring Authorization Server.
+      operationId: startOperatorLogin
+      security: []
+      responses:
+        '302':
+          description: Redirect to the same-origin Spring Authorization Server login page.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        '503':
+          $ref: '#/components/responses/BffUnavailable'
+  /api/auth/callback:
+    get:
+      tags: [Authentication]
+      summary: Complete operator sign-in
+      description: Validates OAuth state and nonce, exchanges the authorization code server-side, and sets an opaque session cookie.
+      operationId: completeOperatorLogin
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '302':
+          description: Redirect to the CRM after creating the server-side session.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+            Set-Cookie:
+              description: Secure, HttpOnly, SameSite session cookie. OAuth tokens are not included.
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/BffBadRequest'
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get the signed-in operator profile
+      operationId: getCurrentOperator
+      security:
+        - bffSession: []
+      responses:
+        '200':
+          description: Current operator's display-safe identity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperatorSession' }
+        '401':
+          $ref: '#/components/responses/SessionUnauthorized'
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: End the operator session
+      operationId: logoutOperator
+      security:
+        - bffSession: []
+      responses:
+        '204':
+          description: Session and server-side tokens removed; session cookie cleared.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+        '401':
+          $ref: '#/components/responses/SessionUnauthorized'
+  /api/testlab/respond:
+    post:
+      tags: [Test lab]
+      summary: Run an authenticated Test Lab turn
+      operationId: respondInTestLab
+      security:
+        - bffSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestLabRequest' }
+      responses:
+        '200':
+          description: Ford-service response for the stable Test Lab session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiRespondResponse' }
+        '400':
+          $ref: '#/components/responses/BffBadRequest'
+        '401':
+          $ref: '#/components/responses/SessionUnauthorized'
+        '403':
+          description: Operator is not authorized for the selected tenant.
+        '502':
+          $ref: '#/components/responses/BffUnavailable'
+components:
+  securitySchemes:
+    bffSession:
+      type: apiKey
+      in: cookie
+      name: ford_session
+  schemas:
+    OperatorSession:
+      type: object
+      required: [operatorId, displayName, email, roles, tenantIds]
+      properties:
+        operatorId: { type: string, format: uuid }
+        displayName: { type: string }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items: { type: string, enum: [OPERATOR, MANAGER, ADMIN] }
+        tenantIds:
+          type: array
+          items: { type: string, format: uuid }
+    TestLabRequest:
+      type: object
+      required: [message, conversationId]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 5000 }
+        conversationId: { type: string, format: uuid }
+  responses:
+    BffBadRequest:
+      description: Request is malformed or invalid.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+    SessionUnauthorized:
+      description: Session is missing, invalid, or expired.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }
+    BffUnavailable:
+      description: Auth server or Ford-service is unavailable.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetail' }

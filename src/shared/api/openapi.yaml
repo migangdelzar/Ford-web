@@ -9,8 +9,9 @@ info:
     provider-only Meta webhook routes. Operations marked with
     `x-implementation-status: planned` are not available until their backend
     implementation is released.
-    Authentication is provided by the deployment's external OIDC provider;
-    this backend is a resource server and does not issue login tokens.
+    Ford-service owns operator authentication and token issuance through Spring
+    Authorization Server. Spring Security WebAuthn passkeys are primary;
+    Spring one-time-token email login is the recovery path.
   contact:
     name: Ford AI Service
 servers:
@@ -19,11 +20,31 @@ servers:
   - url: http://localhost:8080
     description: Local backend origin
 x-authentication:
-  providerType: oidc
-  discoveryUrl: ${FORD_SECURITY_ISSUER_URI}/.well-known/openid-configuration
-  audience: ${FORD_SECURITY_AUDIENCE}
+  providerType: spring-authorization-server
+  issuer: https://ford.emme.business
+  discoveryUrl: https://ford.emme.business/.well-known/openid-configuration
   browserFlow: authorization_code_pkce
   recommendedDeployment: bff
+  passkeyPrimary: true
+  emailOneTimeTokenFallback: true
+  passkeyRelyingParty:
+    id: ford.emme.business
+    allowedOrigins:
+      - https://ford.emme.business
+  persistence: PostgreSQL
+  protocolEndpoints:
+    openidConfiguration: /.well-known/openid-configuration
+    jwks: /oauth2/jwks
+    authorization: /oauth2/authorize
+    token: /oauth2/token
+  passkeyEndpoints:
+    registrationOptions: /webauthn/register/options
+    registration: /webauthn/register
+    authenticationOptions: /webauthn/authenticate/options
+    authentication: /login/webauthn
+  emailOneTimeTokenEndpoints:
+    generate: /ott/generate
+    submit: /login/ott
   requiredJwtClaims:
     - iss
     - aud
@@ -32,16 +53,24 @@ x-authentication:
     - nbf
     - roles
     - tenant_id_or_tenant_ids
-  roleValues: [OPERATOR, MANAGER, ADMIN]
-  currentScopes: [openid, profile, email, 'operator:read', 'operator:write', 'handoff:manage']
+  roleValues:
+    - OPERATOR
+    - MANAGER
+    - ADMIN
+  currentScopes:
+    - openid
+    - profile
+    - email
+    - operator:read
+    - operator:write
+    - handoff:manage
   tokenHandling: |
-    The frontend or BFF obtains the access token from the OIDC provider.
-    It sends only the short-lived access token to this API as a Bearer token.
-    Refresh tokens and client secrets must stay in the BFF or identity
-    provider; they must never be embedded in frontend JavaScript.
+    The BFF uses authorization code with PKCE and keeps access and refresh
+    tokens server-side. The browser receives only an opaque Secure, HttpOnly,
+    SameSite session cookie. Never embed signing keys or OAuth client secrets
+    in frontend JavaScript.
 tags:
   - name: Health
-  - name: Actuator
   - name: AI
   - name: Conversations
   - name: Messages
@@ -56,107 +85,30 @@ tags:
   - name: Events
   - name: Test lab
   - name: Meta webhooks
+  - name: Authentication
 security:
   - bearerAuth: []
 paths:
-  /actuator/health:
-    get:
-      tags: [Actuator]
-      summary: Spring Boot Actuator composite health & Meta channel indicators
-      description: |
-        Returns composite system health (`UP`, `DEGRADED`, `DOWN`) along with custom
-        `HealthIndicator` components for `whatsapp`, `instagram`, `messenger`, `db`, and `redis`.
-      operationId: getActuatorHealth
-      x-implementation-status: implemented
-      responses:
-        '200':
-          description: Composite health payload
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ActuatorHealthResponse'
-        '503':
-          description: One or more critical components are DOWN
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ActuatorHealthResponse'
-
-  /actuator/metrics/meta.integration.latency:
-    get:
-      tags: [Actuator]
-      summary: Micrometer Timer for Meta channel round-trip latency
-      description: Supports tag filtering such as `?tag=channel:WHATSAPP` and `?tag=percentile:0.95`.
-      operationId: getMetaLatencyMetric
-      x-implementation-status: implemented
-      parameters:
-        - name: tag
-          in: query
-          required: false
-          description: Filter by Micrometer tag (`channel:WHATSAPP`, `channel:INSTAGRAM`, `channel:MESSENGER`)
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Micrometer metric measurement
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ActuatorMetricResponse'
-
-  /actuator/metrics/meta.integration.uptime:
-    get:
-      tags: [Actuator]
-      summary: Micrometer Gauge for rolling 30-day channel uptime percentage
-      operationId: getMetaUptimeMetric
-      x-implementation-status: implemented
-      parameters:
-        - name: tag
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Micrometer metric measurement
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ActuatorMetricResponse'
-
-  /actuator/metrics/http.server.requests:
-    get:
-      tags: [Actuator]
-      summary: Standard Spring Boot HTTP server requests timer
-      operationId: getHttpServerRequestsMetric
-      x-implementation-status: implemented
-      responses:
-        '200':
-          description: HTTP server requests timer measurement
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ActuatorMetricResponse'
-
   /api/v1/health:
     get:
-      tags: [Health]
+      tags:
+        - Health
       summary: Check service availability
       description: Public liveness response. It does not reveal provider secrets or API-key readiness.
       operationId: getHealth
       x-implementation-status: implemented
       security: []
       responses:
-        '200':
+        "200":
           description: Service is available
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthStatus'
-
+                $ref: "#/components/schemas/HealthStatus"
   /api/v1/ai/respond:
     post:
-      tags: [AI]
+      tags:
+        - AI
       summary: Generate a display-safe assistant response
       description: Runs the configured assistant and returns display-safe classification and handoff information.
       operationId: respondWithAi
@@ -168,43 +120,43 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AiRespondRequest'
+              $ref: "#/components/schemas/AiRespondRequest"
       responses:
-        '200':
+        "200":
           description: Assistant response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AiRespondResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                $ref: "#/components/schemas/AiRespondResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/conversations:
     get:
-      tags: [Conversations]
+      tags:
+        - Conversations
       summary: List conversations
       description: Returns conversations visible to the authenticated operator's tenant claims.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/TenantId"
         - name: state
           in: query
           schema:
-            $ref: '#/components/schemas/ConversationState'
+            $ref: "#/components/schemas/ConversationState"
         - name: channel
           in: query
           schema:
-            $ref: '#/components/schemas/Channel'
+            $ref: "#/components/schemas/Channel"
         - name: search
           in: query
           description: Search by participant, phone number, or latest message text.
@@ -217,248 +169,250 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Conversation page
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ConversationPage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+                $ref: "#/components/schemas/ConversationPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/conversations/{conversationId}:
     parameters:
-      - $ref: '#/components/parameters/ConversationId'
+      - $ref: "#/components/parameters/ConversationId"
     get:
-      tags: [Conversations]
+      tags:
+        - Conversations
       summary: Get a conversation
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '200':
+        "200":
           description: Conversation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Conversation'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
+                $ref: "#/components/schemas/Conversation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/conversations/{conversationId}/messages:
     parameters:
-      - $ref: '#/components/parameters/ConversationId'
+      - $ref: "#/components/parameters/ConversationId"
     get:
-      tags: [Messages]
+      tags:
+        - Messages
       summary: List conversation messages
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '200':
+        "200":
           description: Message page
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MessagePage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/MessagePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     post:
-      tags: [Messages]
+      tags:
+        - Messages
       summary: Send an operator message
       description: Sends a message through the channel adapter and returns its initial delivery state.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/IfMatch'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SendMessageRequest'
+              $ref: "#/components/schemas/SendMessageRequest"
       responses:
-        '202':
+        "202":
           description: Message accepted for delivery
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CommandReceipt'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
+                $ref: "#/components/schemas/CommandReceipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
           description: Conversation is locked by another operator or the provider window is closed.
           content:
             application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetail'
-
+                $ref: "#/components/schemas/ProblemDetail"
   /api/v1/conversations/{conversationId}/takeover:
     post:
-      tags: [Handoffs]
+      tags:
+        - Handoffs
       summary: Take over a conversation
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/ConversationId'
+        - $ref: "#/components/parameters/ConversationId"
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TakeoverRequest'
+              $ref: "#/components/schemas/TakeoverRequest"
       responses:
-        '200':
+        "200":
           description: Active handoff
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
+                $ref: "#/components/schemas/HandoffTicket"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/conversations/{conversationId}/handback:
     post:
-      tags: [Handoffs]
+      tags:
+        - Handoffs
       summary: Return a conversation to the bot
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/ConversationId'
+        - $ref: "#/components/parameters/ConversationId"
       requestBody:
         required: false
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/HandbackRequest'
+              $ref: "#/components/schemas/HandbackRequest"
       responses:
-        '200':
+        "200":
           description: Closed handoff
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
+                $ref: "#/components/schemas/HandoffTicket"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/conversations/{conversationId}/window:
     get:
-      tags: [Messages]
+      tags:
+        - Messages
       summary: Get the Meta customer service window
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/ConversationId'
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '200':
+        "200":
           description: Customer service window state
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CustomerWindow'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-
+                $ref: "#/components/schemas/CustomerWindow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/conversations/{conversationId}/hsm:
     post:
-      tags: [Messages]
+      tags:
+        - Messages
       summary: Send an approved Meta template message
       description: Requires an approved template adapter and returns 503 when template delivery is not configured.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/ConversationId'
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TemplateMessageCommand'
+              $ref: "#/components/schemas/TemplateMessageCommand"
       responses:
-        '202':
+        "202":
           description: Template accepted for delivery
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TemplateMessageReceipt'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                $ref: "#/components/schemas/TemplateMessageReceipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/handoffs:
     get:
-      tags: [Handoffs]
+      tags:
+        - Handoffs
       summary: List handoff tickets
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/PageSize'
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
         - name: status
           in: query
           schema:
-            $ref: '#/components/schemas/HandoffStatus'
+            $ref: "#/components/schemas/HandoffStatus"
       responses:
-        '200':
+        "200":
           description: Handoff page
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HandoffPage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+                $ref: "#/components/schemas/HandoffPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
-      tags: [Handoffs]
+      tags:
+        - Handoffs
       summary: Request a human handoff
       x-implementation-status: implemented
       security:
@@ -468,370 +422,393 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/HandoffRequest'
+              $ref: "#/components/schemas/HandoffRequest"
       responses:
-        '201':
+        "201":
           description: Handoff created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+                $ref: "#/components/schemas/HandoffTicket"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/handoffs/{handoffId}/claim:
     post:
-      tags: [Handoffs]
+      tags:
+        - Handoffs
       summary: Claim a pending handoff
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/HandoffId'
-        - $ref: '#/components/parameters/ExpectedVersion'
+        - $ref: "#/components/parameters/HandoffId"
+        - $ref: "#/components/parameters/ExpectedVersion"
       responses:
-        '200':
+        "200":
           description: Claimed handoff
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
+                $ref: "#/components/schemas/HandoffTicket"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/handoffs/{handoffId}/pause:
     post:
-      tags: [Handoffs]
+      tags:
+        - Handoffs
       summary: Pause bot processing for a handoff
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/HandoffId'
-        - $ref: '#/components/parameters/ExpectedVersion'
+        - $ref: "#/components/parameters/HandoffId"
+        - $ref: "#/components/parameters/ExpectedVersion"
       responses:
-        '200':
+        "200":
           description: Paused handoff
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
+                $ref: "#/components/schemas/HandoffTicket"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/handoffs/{handoffId}/resume:
     post:
-      tags: [Handoffs]
+      tags:
+        - Handoffs
       summary: Resume bot processing for a handoff
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/HandoffId'
-        - $ref: '#/components/parameters/ExpectedVersion'
+        - $ref: "#/components/parameters/HandoffId"
+        - $ref: "#/components/parameters/ExpectedVersion"
       responses:
-        '200':
+        "200":
           description: Resumed handoff
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HandoffTicket'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
+                $ref: "#/components/schemas/HandoffTicket"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/metrics/overview:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getMetricsOverview
       summary: Get tenant-scoped operational overview metrics
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
-        - $ref: '#/components/parameters/MetricTimezone'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
+        - $ref: "#/components/parameters/MetricTimezone"
       responses:
-        '200':
+        "200":
           description: Operational overview
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/MetricsOverview' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
+              schema:
+                $ref: "#/components/schemas/MetricsOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/metrics/bot:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getBotMetrics
       summary: Get AI classification and provider metrics
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
-        - $ref: '#/components/parameters/MetricTimezone'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
+        - $ref: "#/components/parameters/MetricTimezone"
       responses:
-        '200':
+        "200":
           description: Bot metrics
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/BotMetrics' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
+              schema:
+                $ref: "#/components/schemas/BotMetrics"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/metrics/leads:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getLeadMetrics
       summary: Get lead temperature metrics
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
-        - $ref: '#/components/parameters/MetricTimezone'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
+        - $ref: "#/components/parameters/MetricTimezone"
       responses:
-        '200':
+        "200":
           description: Lead metrics
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/LeadMetrics' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
+              schema:
+                $ref: "#/components/schemas/LeadMetrics"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/metrics/conversations:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getConversationMetrics
       summary: Get conversation state metrics
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
       responses:
-        '200':
+        "200":
           description: Conversation metrics
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ConversationMetrics' }
-
+              schema:
+                $ref: "#/components/schemas/ConversationMetrics"
   /api/v1/metrics/channels:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getChannelMetrics
       summary: Get channel volume metrics
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
       responses:
-        '200':
+        "200":
           description: Channel metrics
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ChannelMetrics' }
-
+              schema:
+                $ref: "#/components/schemas/ChannelMetrics"
   /api/v1/metrics/advisors:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getAdvisorMetrics
       summary: Get advisor handoff metrics
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
       responses:
-        '200':
+        "200":
           description: Advisor metrics
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/AdvisorMetrics' }
-
+              schema:
+                $ref: "#/components/schemas/AdvisorMetrics"
   /api/v1/metrics/funnel:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getFunnelMetrics
       summary: Get lead funnel metrics
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
       responses:
-        '200':
+        "200":
           description: Funnel metrics
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/FunnelMetrics' }
-
+              schema:
+                $ref: "#/components/schemas/FunnelMetrics"
   /api/v1/metrics/timeseries:
     get:
-      tags: [Metrics]
+      tags:
+        - Metrics
       operationId: getMetricsTimeSeries
       summary: Get metrics time series
       x-implementation-status: implemented
-      security: [{ bearerAuth: [] }]
+      security:
+        - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/MetricFrom'
-        - $ref: '#/components/parameters/MetricTo'
-        - $ref: '#/components/parameters/MetricTimezone'
-        - $ref: '#/components/parameters/MetricGroupBy'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/MetricFrom"
+        - $ref: "#/components/parameters/MetricTo"
+        - $ref: "#/components/parameters/MetricTimezone"
+        - $ref: "#/components/parameters/MetricGroupBy"
       responses:
-        '200':
+        "200":
           description: Metrics time series
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TimeSeriesMetrics' }
-
+              schema:
+                $ref: "#/components/schemas/TimeSeriesMetrics"
   /api/v1/leads:
     get:
-      tags: [Leads]
+      tags:
+        - Leads
       summary: List leads
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/PageSize'
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
         - name: temperature
           in: query
           schema:
-            $ref: '#/components/schemas/LeadTemperature'
+            $ref: "#/components/schemas/LeadTemperature"
         - name: search
           in: query
           schema:
             type: string
             maxLength: 200
       responses:
-        '200':
+        "200":
           description: Lead page
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LeadPage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+                $ref: "#/components/schemas/LeadPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/leads/{leadId}:
     parameters:
-      - $ref: '#/components/parameters/LeadId'
+      - $ref: "#/components/parameters/LeadId"
     get:
-      tags: [Leads]
+      tags:
+        - Leads
       summary: Get a lead
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: Lead
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Lead'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/Lead"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     patch:
-      tags: [Leads]
+      tags:
+        - Leads
       summary: Update lead qualification
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-        - $ref: '#/components/parameters/IfMatch'
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
           application/merge-patch+json:
             schema:
-              $ref: '#/components/schemas/LeadPatch'
+              $ref: "#/components/schemas/LeadPatch"
       responses:
-        '200':
+        "200":
           description: Updated lead
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Lead'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
+                $ref: "#/components/schemas/Lead"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/leads/{leadId}/sync:
     post:
-      tags: [Leads]
+      tags:
+        - Leads
       summary: Synchronize a lead with the dealership CRM
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/LeadId'
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/LeadId"
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '202':
+        "202":
           description: Lead synchronization accepted
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SyncReceipt'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                $ref: "#/components/schemas/SyncReceipt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/inventory:
     get:
-      tags: [Vehicles]
+      tags:
+        - Vehicles
       summary: Search available inventory
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
         - name: model
           in: query
           schema:
@@ -846,93 +823,96 @@ paths:
           in: query
           schema:
             type: string
-            enum: [available, reserved, sold]
+            enum:
+              - available
+              - reserved
+              - sold
         - name: branchId
           in: query
           schema:
             type: string
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/PageSize'
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
       responses:
-        '200':
+        "200":
           description: Vehicle inventory page
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VehiclePage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                $ref: "#/components/schemas/VehiclePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/vehicles/{vin}:
     get:
-      tags: [Vehicles]
+      tags:
+        - Vehicles
       summary: Get vehicle details
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/Vin'
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/Vin"
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '200':
+        "200":
           description: Vehicle details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VehicleDetails'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                $ref: "#/components/schemas/VehicleDetails"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/finance/quote:
     post:
-      tags: [Finance]
+      tags:
+        - Finance
       summary: Calculate a non-binding finance estimate
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FinanceQuoteRequest'
+              $ref: "#/components/schemas/FinanceQuoteRequest"
       responses:
-        '200':
+        "200":
           description: Non-binding finance estimate in MXN
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FinanceQuote'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                $ref: "#/components/schemas/FinanceQuote"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/appointments/available-slots:
     get:
-      tags: [Appointments]
+      tags:
+        - Appointments
       summary: List available test-drive slots
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
         - name: branchId
           in: query
           required: true
@@ -949,125 +929,126 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Available slots
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/AppointmentSlot'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                  $ref: "#/components/schemas/AppointmentSlot"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/appointments/book:
     post:
-      tags: [Appointments]
+      tags:
+        - Appointments
       summary: Book a test drive
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AppointmentBookingRequest'
+              $ref: "#/components/schemas/AppointmentBookingRequest"
       responses:
-        '201':
+        "201":
           description: Appointment booked
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Appointment'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                $ref: "#/components/schemas/Appointment"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/branches/on-duty:
     get:
-      tags: [Advisors]
+      tags:
+        - Advisors
       summary: List branches and advisors currently on duty
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '200':
+        "200":
           description: On-duty branches and advisors
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/BranchOnDuty'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
-
+                  $ref: "#/components/schemas/BranchOnDuty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
   /api/v1/team/advisors:
     get:
-      tags: [Advisors]
+      tags:
+        - Advisors
       summary: List tenant-scoped operator workload
       description: Returns authoritative operator IDs and handoff workload. Directory profile fields are null until a directory adapter is configured.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '200':
+        "200":
           description: Advisor workload list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Advisor'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+                  $ref: "#/components/schemas/Advisor"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/bot/config:
     get:
-      tags: [Bot configuration]
+      tags:
+        - Bot configuration
       summary: Get bot configuration
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: Bot configuration
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BotConfigView'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+                $ref: "#/components/schemas/BotConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     patch:
-      tags: [Bot configuration]
+      tags:
+        - Bot configuration
       summary: Update bot configuration
       x-implementation-status: planned
       security:
@@ -1077,36 +1058,36 @@ paths:
         content:
           application/merge-patch+json:
             schema:
-              $ref: '#/components/schemas/BotConfigPatch'
+              $ref: "#/components/schemas/BotConfigPatch"
       responses:
-        '200':
+        "200":
           description: Updated bot configuration
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BotConfig'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+                $ref: "#/components/schemas/BotConfig"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/events:
     get:
-      tags: [Events]
+      tags:
+        - Events
       summary: List audit events
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/TenantId"
         - name: severity
           in: query
           schema:
-            $ref: '#/components/schemas/EventSeverity'
+            $ref: "#/components/schemas/EventSeverity"
         - name: type
           in: query
           schema:
@@ -1122,62 +1103,63 @@ paths:
             type: string
             format: date-time
       responses:
-        '200':
+        "200":
           description: Audit event page
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EventPage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+                $ref: "#/components/schemas/EventPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/events/stream:
     get:
-      tags: [Events]
+      tags:
+        - Events
       summary: Stream audit events
       description: Server-sent event stream for operator dashboards.
       x-implementation-status: implemented
       security:
         - bearerAuth: []
       parameters:
-        - $ref: '#/components/parameters/TenantId'
+        - $ref: "#/components/parameters/TenantId"
       responses:
-        '200':
+        "200":
           description: Event stream
           content:
             text/event-stream:
               schema:
                 type: string
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/v1/test-lab/faults:
     get:
-      tags: [Test lab]
+      tags:
+        - Test lab
       summary: Get active fault injection settings
       x-implementation-status: implemented
       x-environment: development-only
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: Fault settings
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FaultSettings'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
+                $ref: "#/components/schemas/FaultSettings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
     put:
-      tags: [Test lab]
+      tags:
+        - Test lab
       summary: Replace fault injection settings
       x-implementation-status: implemented
       x-environment: development-only
@@ -1188,26 +1170,26 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FaultSettings'
+              $ref: "#/components/schemas/FaultSettings"
       responses:
-        '200':
+        "200":
           description: Fault settings
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FaultSettings'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
+                $ref: "#/components/schemas/FaultSettings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/v1/test-lab/scenarios/run:
     post:
-      tags: [Test lab]
+      tags:
+        - Test lab
       summary: Run an automated scenario suite
       x-implementation-status: planned
       x-environment: development-only
@@ -1218,36 +1200,37 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ScenarioRunRequest'
+              $ref: "#/components/schemas/ScenarioRunRequest"
       responses:
-        '202':
+        "202":
           description: Scenario suite accepted
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ScenarioRun'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
+                $ref: "#/components/schemas/ScenarioRun"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /webhooks/meta/{channel}:
     get:
-      tags: [Meta webhooks]
+      tags:
+        - Meta webhooks
       summary: Verify a Meta webhook subscription
       description: Provider callback. This route is not a frontend browser API.
       x-implementation-status: implemented
       security: []
       parameters:
-        - $ref: '#/components/parameters/MetaChannel'
+        - $ref: "#/components/parameters/MetaChannel"
         - name: hub.mode
           in: query
           required: true
           schema:
             type: string
-            enum: [subscribe]
+            enum:
+              - subscribe
         - name: hub.verify_token
           in: query
           required: true
@@ -1259,28 +1242,29 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Challenge echoed as plain text
           content:
             text/plain:
               schema:
                 type: string
-        '400':
+        "400":
           description: Invalid verification request
     post:
-      tags: [Meta webhooks]
+      tags:
+        - Meta webhooks
       summary: Receive a Meta webhook delivery
       description: Provider callback authenticated by X-Hub-Signature-256. Do not call from the browser.
       x-implementation-status: implemented
       security: []
       parameters:
-        - $ref: '#/components/parameters/MetaChannel'
+        - $ref: "#/components/parameters/MetaChannel"
         - name: X-Hub-Signature-256
           in: header
           required: true
           schema:
             type: string
-            pattern: '^sha256=[a-f0-9]{64}$'
+            pattern: ^sha256=[a-f0-9]{64}$
       requestBody:
         required: true
         content:
@@ -1289,13 +1273,126 @@ paths:
               type: object
               additionalProperties: true
       responses:
-        '202':
+        "202":
           description: Webhook accepted for processing
-        '400':
+        "400":
           description: Invalid payload or unsupported channel
-        '403':
+        "403":
           description: Invalid signature or channel binding
-
+  /api/auth/login:
+    get:
+      tags:
+        - Authentication
+      summary: Start operator sign-in
+      description: Starts an authorization-code flow with PKCE through Spring Authorization Server.
+      operationId: startOperatorLogin
+      security: []
+      responses:
+        "302":
+          description: Redirect to the same-origin Spring Authorization Server login page.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "503":
+          $ref: "#/components/responses/BffUnavailable"
+  /api/auth/callback:
+    get:
+      tags:
+        - Authentication
+      summary: Complete operator sign-in
+      description: Validates OAuth state and nonce, exchanges the authorization code server-side, and sets an opaque session cookie.
+      operationId: completeOperatorLogin
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the CRM after creating the server-side session.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              description: Secure, HttpOnly, SameSite session cookie. OAuth tokens are not included.
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BffBadRequest"
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get the signed-in operator profile
+      operationId: getCurrentOperator
+      security:
+        - bffSession: []
+      responses:
+        "200":
+          description: Current operator's display-safe identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorSession"
+        "401":
+          $ref: "#/components/responses/SessionUnauthorized"
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: End the operator session
+      operationId: logoutOperator
+      security:
+        - bffSession: []
+      responses:
+        "204":
+          description: Session and server-side tokens removed; session cookie cleared.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/SessionUnauthorized"
+  /api/testlab/respond:
+    post:
+      tags:
+        - Test lab
+      summary: Run an authenticated Test Lab turn
+      operationId: respondInTestLab
+      security:
+        - bffSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestLabRequest"
+      responses:
+        "200":
+          description: Ford-service response for the stable Test Lab session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiRespondResponse"
+        "400":
+          $ref: "#/components/responses/BffBadRequest"
+        "401":
+          $ref: "#/components/responses/SessionUnauthorized"
+        "403":
+          description: Operator is not authorized for the selected tenant.
+        "502":
+          $ref: "#/components/responses/BffUnavailable"
 components:
   securitySchemes:
     bearerAuth:
@@ -1332,6 +1429,10 @@ components:
             bot:manage: Read and update bot configuration
             events:read: Read and stream audit events
             testlab:run: Run development-only scenarios
+    bffSession:
+      type: apiKey
+      in: cookie
+      name: ford_session
   parameters:
     Cursor:
       name: cursor
@@ -1370,7 +1471,7 @@ components:
       description: Strong conversation version validator, for example `"v7"`.
       schema:
         type: string
-        pattern: '^"?v[0-9]+"?$'
+        pattern: ^"?v[0-9]+"?$
     CorrelationId:
       name: X-Correlation-Id
       in: header
@@ -1405,7 +1506,10 @@ components:
       required: false
       schema:
         type: string
-        enum: [day, week, month]
+        enum:
+          - day
+          - week
+          - month
         default: day
     ExpectedVersion:
       name: expectedVersion
@@ -1456,63 +1560,91 @@ components:
       in: path
       required: true
       schema:
-        $ref: '#/components/schemas/MetaChannel'
+        $ref: "#/components/schemas/MetaChannel"
   responses:
     BadRequest:
       description: Invalid request
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetail'
+            $ref: "#/components/schemas/ProblemDetail"
     Unauthorized:
       description: Missing or invalid bearer token
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetail'
+            $ref: "#/components/schemas/ProblemDetail"
     Forbidden:
       description: Authenticated identity lacks the required role, scope, or tenant access
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetail'
+            $ref: "#/components/schemas/ProblemDetail"
     NotFound:
       description: Resource not found
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetail'
+            $ref: "#/components/schemas/ProblemDetail"
     Conflict:
       description: State conflict or stale version
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetail'
+            $ref: "#/components/schemas/ProblemDetail"
     UpstreamUnavailable:
       description: Required upstream adapter is not configured or available
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/ProblemDetail'
+            $ref: "#/components/schemas/ProblemDetail"
+    BffBadRequest:
+      description: Request is malformed or invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    SessionUnauthorized:
+      description: Session is missing, invalid, or expired.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    BffUnavailable:
+      description: Auth server or Ford-service is unavailable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
   schemas:
     HealthStatus:
       type: object
-      required: [status, timestamp]
+      required:
+        - status
+        - timestamp
       properties:
         status:
           type: string
-          enum: [ok]
+          enum:
+            - ok
         timestamp:
           type: string
           format: date-time
     AiRespondRequest:
       type: object
-      required: [messages]
+      required:
+        - messages
       properties:
         conversationId:
           type: string
           format: uuid
           nullable: true
+          description: Stable test session ID. History is loaded from server storage.
+        tenantId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Required only when the validated operator token has multiple tenants.
         containsSensitiveData:
           type: boolean
           default: false
@@ -1521,28 +1653,50 @@ components:
           minItems: 1
           maxItems: 50
           items:
-            $ref: '#/components/schemas/AiMessage'
+            $ref: "#/components/schemas/AiMessage"
     AiMessage:
       type: object
-      required: [role, content]
+      required:
+        - role
+        - content
       properties:
         role:
           type: string
-          enum: [user, customer, assistant, model, system]
+          enum:
+            - user
+            - customer
+            - assistant
+            - model
+            - system
         content:
           type: string
           minLength: 1
           maxLength: 10000
     AiRespondResponse:
       type: object
-      required: [replyText, suggestedTemperature, handoffSuggested,
-                 handoffReason, intent, leadStage, toolFamily, sourceDocumentIds]
+      required:
+        - conversationId
+        - replyText
+        - suggestedTemperature
+        - handoffSuggested
+        - handoffReason
+        - intent
+        - leadStage
+        - toolFamily
+        - sourceDocumentIds
       properties:
+        conversationId:
+          type: string
+          format: uuid
         replyText:
           type: string
         suggestedTemperature:
           type: string
-          enum: [UNKNOWN, COLD, WARM, HOT]
+          enum:
+            - UNKNOWN
+            - COLD
+            - WARM
+            - HOT
         handoffSuggested:
           type: boolean
         handoffReason:
@@ -1559,7 +1713,11 @@ components:
             type: string
     ProblemDetail:
       type: object
-      required: [type, title, status, detail]
+      required:
+        - type
+        - title
+        - status
+        - detail
       properties:
         type:
           type: string
@@ -1582,7 +1740,9 @@ components:
           type: string
     CustomerWindow:
       type: object
-      required: [open, channel]
+      required:
+        - open
+        - channel
       properties:
         open:
           type: boolean
@@ -1595,17 +1755,19 @@ components:
           format: date-time
           nullable: true
         channel:
-          $ref: '#/components/schemas/Channel'
+          $ref: "#/components/schemas/Channel"
     TemplateMessageCommand:
       type: object
-      required: [templateName, language]
+      required:
+        - templateName
+        - language
       properties:
         templateName:
           type: string
-          pattern: '^[a-z0-9_]{1,120}$'
+          pattern: ^[a-z0-9_]{1,120}$
         language:
           type: string
-          pattern: '^[a-z]{2}_[A-Z]{2}$'
+          pattern: ^[a-z]{2}_[A-Z]{2}$
         parameters:
           type: array
           maxItems: 10
@@ -1614,7 +1776,8 @@ components:
             maxLength: 1024
     TemplateMessageReceipt:
       type: object
-      required: [accepted]
+      required:
+        - accepted
       properties:
         providerMessageId:
           type: string
@@ -1623,25 +1786,53 @@ components:
           type: boolean
     Channel:
       type: string
-      enum: [WHATSAPP, MESSENGER, INSTAGRAM]
+      enum:
+        - WHATSAPP
+        - MESSENGER
+        - INSTAGRAM
     MetaChannel:
       type: string
-      enum: [whatsapp, messenger, instagram]
+      enum:
+        - whatsapp
+        - messenger
+        - instagram
     ConversationState:
       type: string
-      enum: [BOT_ACTIVE, LEAD_CAPTURE, HUMAN_PENDING, HUMAN_ACTIVE, CLOSED]
+      enum:
+        - BOT_ACTIVE
+        - LEAD_CAPTURE
+        - HUMAN_PENDING
+        - HUMAN_ACTIVE
+        - CLOSED
     HandoffStatus:
       type: string
-      enum: [HUMAN_PENDING, HUMAN_ACTIVE, CLOSED]
+      enum:
+        - HUMAN_PENDING
+        - HUMAN_ACTIVE
+        - CLOSED
     MessageDirection:
       type: string
-      enum: [INBOUND, OUTBOUND]
+      enum:
+        - INBOUND
+        - OUTBOUND
     DeliveryStatus:
       type: string
-      enum: [QUEUED, SENT, DELIVERED, READ, FAILED]
+      enum:
+        - QUEUED
+        - SENT
+        - DELIVERED
+        - READ
+        - FAILED
     Conversation:
       type: object
-      required: [id, tenantId, channel, state, version, participant, updatedAt]
+      required:
+        - id
+        - tenantId
+        - channel
+        - state
+        - version
+        - participant
+        - updatedAt
       properties:
         id:
           type: string
@@ -1650,14 +1841,14 @@ components:
           type: string
           format: uuid
         channel:
-          $ref: '#/components/schemas/Channel'
+          $ref: "#/components/schemas/Channel"
         state:
-          $ref: '#/components/schemas/ConversationState'
+          $ref: "#/components/schemas/ConversationState"
         version:
           type: integer
           format: int64
         participant:
-          $ref: '#/components/schemas/Participant'
+          $ref: "#/components/schemas/Participant"
         assignedOperatorId:
           type: string
           format: uuid
@@ -1667,13 +1858,18 @@ components:
           format: uuid
           nullable: true
         latestMessage:
-          $ref: '#/components/schemas/ConversationMessage'
+          $ref: "#/components/schemas/ConversationMessage"
         updatedAt:
           type: string
           format: date-time
     ConversationMessage:
       type: object
-      required: [id, conversationId, direction, content, receivedAt]
+      required:
+        - id
+        - conversationId
+        - direction
+        - content
+        - receivedAt
       properties:
         id:
           type: string
@@ -1685,13 +1881,13 @@ components:
           type: string
           nullable: true
         direction:
-          $ref: '#/components/schemas/MessageDirection'
+          $ref: "#/components/schemas/MessageDirection"
         content:
           type: string
         deliveryStatus:
-          $ref: '#/components/schemas/DeliveryStatus'
+          $ref: "#/components/schemas/DeliveryStatus"
         sender:
-          $ref: '#/components/schemas/Participant'
+          $ref: "#/components/schemas/Participant"
         receivedAt:
           type: string
           format: date-time
@@ -1704,7 +1900,8 @@ components:
           additionalProperties: true
     Participant:
       type: object
-      required: [providerId]
+      required:
+        - providerId
       properties:
         providerId:
           type: string
@@ -1716,27 +1913,33 @@ components:
           nullable: true
     ConversationPage:
       type: object
-      required: [items, page]
+      required:
+        - items
+        - page
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/Conversation'
+            $ref: "#/components/schemas/Conversation"
         page:
-          $ref: '#/components/schemas/PageInfo'
+          $ref: "#/components/schemas/PageInfo"
     MessagePage:
       type: object
-      required: [items, page]
+      required:
+        - items
+        - page
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/ConversationMessage'
+            $ref: "#/components/schemas/ConversationMessage"
         page:
-          $ref: '#/components/schemas/PageInfo'
+          $ref: "#/components/schemas/PageInfo"
     PageInfo:
       type: object
-      required: [pageSize, hasNext]
+      required:
+        - pageSize
+        - hasNext
       properties:
         pageSize:
           type: integer
@@ -1747,7 +1950,8 @@ components:
           type: boolean
     SendMessageRequest:
       type: object
-      required: [content]
+      required:
+        - content
       properties:
         content:
           type: string
@@ -1761,7 +1965,14 @@ components:
           default: false
     CommandReceipt:
       type: object
-      required: [messageId, conversationId, accepted, deliveryStatus, conversationVersion, internalNote, acceptedAt]
+      required:
+        - messageId
+        - conversationId
+        - accepted
+        - deliveryStatus
+        - conversationVersion
+        - internalNote
+        - acceptedAt
       properties:
         messageId:
           type: string
@@ -1773,7 +1984,9 @@ components:
           type: boolean
         deliveryStatus:
           type: string
-          enum: [QUEUED, INTERNAL]
+          enum:
+            - QUEUED
+            - INTERNAL
         conversationVersion:
           type: integer
           format: int64
@@ -1784,97 +1997,232 @@ components:
           format: date-time
     MetricPeriod:
       type: object
-      required: [from, to, timezone]
+      required:
+        - from
+        - to
+        - timezone
       properties:
-        from: { type: string, format: date-time }
-        to: { type: string, format: date-time }
-        timezone: { type: string }
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        timezone:
+          type: string
     MetricsOverview:
       type: object
-      required: [period, totalConversations, activeConversations, inboundMessages, outboundMessages, handoffs, failedDeliveries]
+      required:
+        - period
+        - totalConversations
+        - activeConversations
+        - inboundMessages
+        - outboundMessages
+        - handoffs
+        - failedDeliveries
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
-        totalConversations: { type: integer, format: int64 }
-        activeConversations: { type: integer, format: int64 }
-        inboundMessages: { type: integer, format: int64 }
-        outboundMessages: { type: integer, format: int64 }
-        handoffs: { type: integer, format: int64 }
-        failedDeliveries: { type: integer, format: int64 }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
+        totalConversations:
+          type: integer
+          format: int64
+        activeConversations:
+          type: integer
+          format: int64
+        inboundMessages:
+          type: integer
+          format: int64
+        outboundMessages:
+          type: integer
+          format: int64
+        handoffs:
+          type: integer
+          format: int64
+        failedDeliveries:
+          type: integer
+          format: int64
     BotMetrics:
       type: object
-      required: [period, classifiedDecisions, fallbackDecisions, handoffRecommendations, averageLatencyMs, successfulProviderCalls, failedProviderCalls]
+      required:
+        - period
+        - classifiedDecisions
+        - fallbackDecisions
+        - handoffRecommendations
+        - averageLatencyMs
+        - successfulProviderCalls
+        - failedProviderCalls
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
-        classifiedDecisions: { type: integer, format: int64 }
-        fallbackDecisions: { type: integer, format: int64 }
-        handoffRecommendations: { type: integer, format: int64 }
-        averageLatencyMs: { type: number, format: double }
-        successfulProviderCalls: { type: integer, format: int64 }
-        failedProviderCalls: { type: integer, format: int64 }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
+        classifiedDecisions:
+          type: integer
+          format: int64
+        fallbackDecisions:
+          type: integer
+          format: int64
+        handoffRecommendations:
+          type: integer
+          format: int64
+        averageLatencyMs:
+          type: number
+          format: double
+        successfulProviderCalls:
+          type: integer
+          format: int64
+        failedProviderCalls:
+          type: integer
+          format: int64
     LeadMetrics:
       type: object
-      required: [period, totalLeads, hot, warm, cold, unknown]
+      required:
+        - period
+        - totalLeads
+        - hot
+        - warm
+        - cold
+        - unknown
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
-        totalLeads: { type: integer, format: int64 }
-        hot: { type: integer, format: int64 }
-        warm: { type: integer, format: int64 }
-        cold: { type: integer, format: int64 }
-        unknown: { type: integer, format: int64 }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
+        totalLeads:
+          type: integer
+          format: int64
+        hot:
+          type: integer
+          format: int64
+        warm:
+          type: integer
+          format: int64
+        cold:
+          type: integer
+          format: int64
+        unknown:
+          type: integer
+          format: int64
     ConversationMetrics:
       type: object
-      required: [period, byState]
+      required:
+        - period
+        - byState
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
-        byState: { type: object, additionalProperties: { type: integer, format: int64 } }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
+        byState:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
     ChannelMetrics:
       type: object
-      required: [period, byChannel]
+      required:
+        - period
+        - byChannel
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
-        byChannel: { type: object, additionalProperties: { type: integer, format: int64 } }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
+        byChannel:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
     AdvisorMetrics:
       type: object
-      required: [period, advisors]
+      required:
+        - period
+        - advisors
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
         advisors:
           type: array
           items:
             type: object
-            required: [advisorId, activeHandoffs, closedHandoffs]
+            required:
+              - advisorId
+              - activeHandoffs
+              - closedHandoffs
             properties:
-              advisorId: { type: string, format: uuid }
-              activeHandoffs: { type: integer, format: int64 }
-              closedHandoffs: { type: integer, format: int64 }
+              advisorId:
+                type: string
+                format: uuid
+              activeHandoffs:
+                type: integer
+                format: int64
+              closedHandoffs:
+                type: integer
+                format: int64
     FunnelMetrics:
       type: object
-      required: [period, conversations, leads, hotLeads, handoffs, appointments]
+      required:
+        - period
+        - conversations
+        - leads
+        - hotLeads
+        - handoffs
+        - appointments
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
-        conversations: { type: integer, format: int64 }
-        leads: { type: integer, format: int64 }
-        hotLeads: { type: integer, format: int64 }
-        handoffs: { type: integer, format: int64 }
-        appointments: { type: integer, format: int64 }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
+        conversations:
+          type: integer
+          format: int64
+        leads:
+          type: integer
+          format: int64
+        hotLeads:
+          type: integer
+          format: int64
+        handoffs:
+          type: integer
+          format: int64
+        appointments:
+          type: integer
+          format: int64
     TimeSeriesMetrics:
       type: object
-      required: [period, groupBy, points]
+      required:
+        - period
+        - groupBy
+        - points
       properties:
-        period: { $ref: '#/components/schemas/MetricPeriod' }
-        groupBy: { type: string, enum: [day, week, month] }
+        period:
+          $ref: "#/components/schemas/MetricPeriod"
+        groupBy:
+          type: string
+          enum:
+            - day
+            - week
+            - month
         points:
           type: array
           items:
             type: object
-            required: [bucket, conversations, inboundMessages, outboundMessages, handoffs, failedDeliveries]
+            required:
+              - bucket
+              - conversations
+              - inboundMessages
+              - outboundMessages
+              - handoffs
+              - failedDeliveries
             properties:
-              bucket: { type: string, format: date-time }
-              conversations: { type: integer, format: int64 }
-              inboundMessages: { type: integer, format: int64 }
-              outboundMessages: { type: integer, format: int64 }
-              handoffs: { type: integer, format: int64 }
-              failedDeliveries: { type: integer, format: int64 }
+              bucket:
+                type: string
+                format: date-time
+              conversations:
+                type: integer
+                format: int64
+              inboundMessages:
+                type: integer
+                format: int64
+              outboundMessages:
+                type: integer
+                format: int64
+              handoffs:
+                type: integer
+                format: int64
+              failedDeliveries:
+                type: integer
+                format: int64
     TakeoverRequest:
       type: object
       properties:
@@ -1897,7 +2245,10 @@ components:
           minimum: 0
     HandoffRequest:
       type: object
-      required: [tenantId, conversationId, reason]
+      required:
+        - tenantId
+        - conversationId
+        - reason
       properties:
         tenantId:
           type: string
@@ -1915,7 +2266,14 @@ components:
           maxLength: 500
     HandoffTicket:
       type: object
-      required: [id, tenantId, conversationId, status, reason, version, createdAt]
+      required:
+        - id
+        - tenantId
+        - conversationId
+        - status
+        - reason
+        - version
+        - createdAt
       properties:
         id:
           type: string
@@ -1931,7 +2289,7 @@ components:
           format: uuid
           nullable: true
         status:
-          $ref: '#/components/schemas/HandoffStatus'
+          $ref: "#/components/schemas/HandoffStatus"
         assignedOperatorId:
           type: string
           format: uuid
@@ -1954,20 +2312,30 @@ components:
           nullable: true
     HandoffPage:
       type: object
-      required: [items, page]
+      required:
+        - items
+        - page
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/HandoffTicket'
+            $ref: "#/components/schemas/HandoffTicket"
         page:
-          $ref: '#/components/schemas/PageInfo'
+          $ref: "#/components/schemas/PageInfo"
     LeadTemperature:
       type: string
-      enum: [COLD, WARM, HOT]
+      enum:
+        - COLD
+        - WARM
+        - HOT
     Lead:
       type: object
-      required: [id, tenantId, temperature, updatedAt, version]
+      required:
+        - id
+        - tenantId
+        - temperature
+        - updatedAt
+        - version
       properties:
         id:
           type: string
@@ -1982,7 +2350,7 @@ components:
           type: string
           nullable: true
         temperature:
-          $ref: '#/components/schemas/LeadTemperature'
+          $ref: "#/components/schemas/LeadTemperature"
         score:
           type: integer
           minimum: 0
@@ -2007,10 +2375,12 @@ components:
           type: string
           nullable: true
         temperature:
-          $ref: '#/components/schemas/LeadTemperature'
+          $ref: "#/components/schemas/LeadTemperature"
         temperatureSource:
           type: string
-          enum: [AI, HUMAN]
+          enum:
+            - AI
+            - HUMAN
         email:
           type: string
           format: email
@@ -2032,29 +2402,41 @@ components:
           nullable: true
     LeadPage:
       type: object
-      required: [items, page]
+      required:
+        - items
+        - page
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/Lead'
+            $ref: "#/components/schemas/Lead"
         page:
-          $ref: '#/components/schemas/PageInfo'
+          $ref: "#/components/schemas/PageInfo"
     SyncReceipt:
       type: object
-      required: [syncId, status]
+      required:
+        - syncId
+        - status
       properties:
         syncId:
           type: string
         status:
           type: string
-          enum: [synced, pending, failed]
+          enum:
+            - synced
+            - pending
+            - failed
         submittedAt:
           type: string
           format: date-time
     VehicleSummary:
       type: object
-      required: [vehicleId, vin, model, year, status]
+      required:
+        - vehicleId
+        - vin
+        - model
+        - year
+        - status
       properties:
         vehicleId:
           type: string
@@ -2070,7 +2452,10 @@ components:
           nullable: true
         status:
           type: string
-          enum: [available, reserved, sold]
+          enum:
+            - available
+            - reserved
+            - sold
         branchId:
           type: string
         branchName:
@@ -2082,7 +2467,7 @@ components:
           minimum: 0
     VehicleDetails:
       allOf:
-        - $ref: '#/components/schemas/VehicleSummary'
+        - $ref: "#/components/schemas/VehicleSummary"
         - type: object
           properties:
             specifications:
@@ -2099,12 +2484,14 @@ components:
                 format: uri
     VehiclePage:
       type: object
-      required: [items, hasNext]
+      required:
+        - items
+        - hasNext
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/VehicleSummary'
+            $ref: "#/components/schemas/VehicleSummary"
         nextCursor:
           type: string
           nullable: true
@@ -2112,7 +2499,11 @@ components:
           type: boolean
     FinanceQuoteRequest:
       type: object
-      required: [vin, downPayment, termMonths, creditScoreTier]
+      required:
+        - vin
+        - downPayment
+        - termMonths
+        - creditScoreTier
       properties:
         vin:
           type: string
@@ -2122,19 +2513,36 @@ components:
           minimum: 0
         termMonths:
           type: integer
-          enum: [12, 24, 36, 48, 60, 72]
+          enum:
+            - 12
+            - 24
+            - 36
+            - 48
+            - 60
+            - 72
         creditScoreTier:
           type: string
-          enum: [UNKNOWN, LOW, MEDIUM, HIGH]
+          enum:
+            - UNKNOWN
+            - LOW
+            - MEDIUM
+            - HIGH
     FinanceQuote:
       type: object
-      required: [vin, currency, monthlyPayment, apr, termMonths, disclaimer]
+      required:
+        - vin
+        - currency
+        - monthlyPayment
+        - apr
+        - termMonths
+        - disclaimer
       properties:
         vin:
           type: string
         currency:
           type: string
-          enum: [MXN]
+          enum:
+            - MXN
         monthlyPayment:
           type: number
           format: double
@@ -2149,7 +2557,11 @@ components:
           type: string
     AppointmentSlot:
       type: object
-      required: [slotId, branchId, startsAt, endsAt]
+      required:
+        - slotId
+        - branchId
+        - startsAt
+        - endsAt
       properties:
         slotId:
           type: string
@@ -2166,7 +2578,11 @@ components:
           nullable: true
     AppointmentBookingRequest:
       type: object
-      required: [vin, customerPhone, branchId, slotId]
+      required:
+        - vin
+        - customerPhone
+        - branchId
+        - slotId
       properties:
         vin:
           type: string
@@ -2181,22 +2597,31 @@ components:
           nullable: true
     Appointment:
       allOf:
-        - $ref: '#/components/schemas/AppointmentBookingRequest'
+        - $ref: "#/components/schemas/AppointmentBookingRequest"
         - type: object
-          required: [appointmentId, status]
+          required:
+            - appointmentId
+            - status
           properties:
             appointmentId:
               type: string
             status:
               type: string
-              enum: [confirmed, pending, cancelled]
+              enum:
+                - confirmed
+                - pending
+                - cancelled
             calendarInvitationUrl:
               type: string
               format: uri
               nullable: true
     Advisor:
       type: object
-      required: [advisorId, role, status, assignedCount]
+      required:
+        - advisorId
+        - role
+        - status
+        - assignedCount
       properties:
         advisorId:
           type: string
@@ -2215,7 +2640,10 @@ components:
           nullable: true
         status:
           type: string
-          enum: [available, in_meeting, away]
+          enum:
+            - available
+            - in_meeting
+            - away
         assignedCount:
           type: integer
         phone:
@@ -2223,7 +2651,10 @@ components:
           nullable: true
     BranchOnDuty:
       type: object
-      required: [branchId, name, advisors]
+      required:
+        - branchId
+        - name
+        - advisors
       properties:
         branchId:
           type: string
@@ -2232,10 +2663,14 @@ components:
         advisors:
           type: array
           items:
-            $ref: '#/components/schemas/Advisor'
+            $ref: "#/components/schemas/Advisor"
     BotConfig:
       type: object
-      required: [enabled, humanHandoffEnabled, model, updatedAt]
+      required:
+        - enabled
+        - humanHandoffEnabled
+        - model
+        - updatedAt
       properties:
         enabled:
           type: boolean
@@ -2251,9 +2686,21 @@ components:
           format: date-time
     BotConfigView:
       type: object
-      required: [enabled, humanHandoffEnabled, model, cloudProvider, cloudEnabled, localEnabled,
-                 classificationEnabled, classificationMode, classificationProvider, jevEnabled,
-                 memoryEnabled, semanticMemoryEnabled, recentMessageLimit, updatedAt]
+      required:
+        - enabled
+        - humanHandoffEnabled
+        - model
+        - cloudProvider
+        - cloudEnabled
+        - localEnabled
+        - classificationEnabled
+        - classificationMode
+        - classificationProvider
+        - jevEnabled
+        - memoryEnabled
+        - semanticMemoryEnabled
+        - recentMessageLimit
+        - updatedAt
       properties:
         enabled:
           type: boolean
@@ -2271,7 +2718,10 @@ components:
           type: boolean
         classificationMode:
           type: string
-          enum: [active, shadow, disabled]
+          enum:
+            - active
+            - shadow
+            - disabled
         classificationProvider:
           type: string
         jevEnabled:
@@ -2284,7 +2734,9 @@ components:
           type: integer
           minimum: 0
         systemPrompt:
-          type: [string, 'null']
+          type:
+            - string
+            - "null"
           description: Always redacted by the operator API.
         updatedAt:
           type: string
@@ -2303,10 +2755,18 @@ components:
           maxLength: 20000
     EventSeverity:
       type: string
-      enum: [DEBUG, INFO, WARN, ERROR]
+      enum:
+        - DEBUG
+        - INFO
+        - WARN
+        - ERROR
     AuditEvent:
       type: object
-      required: [id, type, severity, occurredAt]
+      required:
+        - id
+        - type
+        - severity
+        - occurredAt
       properties:
         id:
           type: string
@@ -2314,7 +2774,7 @@ components:
         type:
           type: string
         severity:
-          $ref: '#/components/schemas/EventSeverity'
+          $ref: "#/components/schemas/EventSeverity"
         occurredAt:
           type: string
           format: date-time
@@ -2330,17 +2790,27 @@ components:
           additionalProperties: true
     EventPage:
       type: object
-      required: [items, page]
+      required:
+        - items
+        - page
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/AuditEvent'
+            $ref: "#/components/schemas/AuditEvent"
         page:
-          $ref: '#/components/schemas/PageInfo'
+          $ref: "#/components/schemas/PageInfo"
     FaultSettings:
       type: object
-      required: [aiTimeout, aiError500, rateLimit429, malformedOutput, channelSendFailure, duplicateWebhook, outOfOrder, offline]
+      required:
+        - aiTimeout
+        - aiError500
+        - rateLimit429
+        - malformedOutput
+        - channelSendFailure
+        - duplicateWebhook
+        - outOfOrder
+        - offline
       properties:
         aiTimeout:
           type: boolean
@@ -2360,7 +2830,8 @@ components:
           type: boolean
     ScenarioRunRequest:
       type: object
-      required: [scenarioIds]
+      required:
+        - scenarioIds
       properties:
         scenarioIds:
           type: array
@@ -2372,13 +2843,19 @@ components:
           default: false
     ScenarioRun:
       type: object
-      required: [runId, status]
+      required:
+        - runId
+        - status
       properties:
         runId:
           type: string
         status:
           type: string
-          enum: [queued, running, passed, failed]
+          enum:
+            - queued
+            - running
+            - passed
+            - failed
         startedAt:
           type: string
           format: date-time
@@ -2390,10 +2867,12 @@ components:
         results:
           type: array
           items:
-            $ref: '#/components/schemas/ScenarioResult'
+            $ref: "#/components/schemas/ScenarioResult"
     ScenarioResult:
       type: object
-      required: [scenarioId, passed]
+      required:
+        - scenarioId
+        - passed
       properties:
         scenarioId:
           type: string
@@ -2402,96 +2881,46 @@ components:
         detail:
           type: string
           nullable: true
-    ActuatorHealthResponse:
+    OperatorSession:
       type: object
-      required: [status]
+      required:
+        - operatorId
+        - displayName
+        - email
+        - roles
+        - tenantIds
       properties:
-        status:
+        operatorId:
           type: string
-          enum: [UP, DEGRADED, DOWN, OUT_OF_SERVICE, UNKNOWN]
-        components:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/ActuatorComponentHealth'
-    ActuatorComponentHealth:
-      type: object
-      required: [status]
-      properties:
-        status:
+          format: uuid
+        displayName:
           type: string
-          enum: [UP, DEGRADED, DOWN, OUT_OF_SERVICE, UNKNOWN]
-        details:
-          type: object
-          additionalProperties: true
-          properties:
-            provider:
-              type: string
-            endpoint:
-              type: string
-            latencyMs:
-              type: number
-            p95LatencyMs:
-              type: number
-            uptime30d:
-              type: number
-            webhookSuccessRate:
-              type: number
-            lastWebhookAt:
-              type: string
-              format: date-time
-            errorRate1h:
-              type: number
-            tokenStatus:
-              type: string
-              enum: [VALID, EXPIRING_SOON, EXPIRED]
-            rateLimitRemainingPct:
-              type: number
-            dailyHistory:
-              type: array
-              items:
-                type: object
-                required: [date, status, uptimePct, avgLatencyMs]
-                properties:
-                  date:
-                    type: string
-                    format: date
-                  status:
-                    type: string
-                    enum: [UP, DEGRADED, DOWN]
-                  uptimePct:
-                    type: number
-                  avgLatencyMs:
-                    type: number
-    ActuatorMetricResponse:
-      type: object
-      required: [name, measurements]
-      properties:
-        name:
+        email:
           type: string
-        description:
-          type: string
-        baseUnit:
-          type: string
-        measurements:
+          format: email
+        roles:
           type: array
           items:
-            type: object
-            required: [statistic, value]
-            properties:
-              statistic:
-                type: string
-              value:
-                type: number
-        availableTags:
+            type: string
+            enum:
+              - OPERATOR
+              - MANAGER
+              - ADMIN
+        tenantIds:
           type: array
           items:
-            type: object
-            required: [tag, values]
-            properties:
-              tag:
-                type: string
-              values:
-                type: array
-                items:
-                  type: string
-
+            type: string
+            format: uuid
+    TestLabRequest:
+      type: object
+      required:
+        - message
+        - conversationId
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        conversationId:
+          type: string
+          format: uuid
