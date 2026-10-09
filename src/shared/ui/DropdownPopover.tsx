@@ -60,7 +60,7 @@ export const DropdownPopover: React.FC<DropdownPopoverProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.96 }}
             transition={SNAPPY_SPRING}
-            className={`absolute top-full mt-2 ${alignClasses[align]} ${width} bg-white/75 backdrop-blur-[20px] backdrop-saturate-[180%] rounded-2xl shadow-xl border border-slate-200/80 p-3.5 z-50 ${className}`}
+            className={`absolute top-full mt-2 ${alignClasses[align]} ${width} max-w-[calc(100vw-1.5rem)] bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl border border-slate-200/80 p-3.5 z-50 ${className}`}
           >
             {children}
           </motion.div>

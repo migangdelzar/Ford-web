@@ -399,7 +399,7 @@ export const DashboardWidget: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 flex flex-col bg-[#FBFBFD] min-h-0 overflow-y-auto">
+    <div className="flex-1 flex flex-col bg-[#FBFBFD] min-h-0 overflow-y-auto pb-24 md:pb-8">
       <div className="p-3.5 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-5 sm:space-y-6">
 
         {/* 1. TOP HEADER & TIMEFRAME SELECTOR */}

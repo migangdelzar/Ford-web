@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { SidebarWidget, MobileBottomBar, AppHeaderWidget } from './widgets';
 import {
   LoginPage,
@@ -12,10 +11,8 @@ import {
 } from './pages';
 import { ToastProvider } from './shared/ui/SonnerToast';
 import { useCrmStore } from './store/useCrmStore';
-import { EMIL_EASE } from './shared/lib/motion';
 import { CookieConsentBanner } from './features/compliance/ui/CookieConsentBanner';
 import { LegalModal, LegalTab } from './features/compliance/ui/LegalModal';
-import { Authority } from './shared/lib/authority';
 import { useSseEvents } from './shared/lib/useSseEvents';
 import { OfflineIndicator } from './shared/lib/pwa';
 
@@ -131,36 +128,72 @@ export function AppContent() {
       {/* Permanent Left Navigation Sidebar */}
       <SidebarWidget />
 
-      {/* Main Content Pane with Emil Kowalski smooth view transition */}
+      {/* Main Content Pane */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Universal Top Header with Logged-in User Profile & Meta Live Status */}
         <AppHeaderWidget />
 
-        {/* Keep views mounted or render with instant responsive transitions */}
+        {/* Keep views mounted with smooth CSS transitions so charts/layouts never deadlock on tab switches */}
         <div className="flex-1 flex h-full overflow-hidden relative">
-          <div className={`flex-1 flex h-full overflow-hidden transition-opacity duration-150 ${activeTab === 'inbox' ? 'block opacity-100' : 'hidden opacity-0 pointer-events-none'}`}>
+          <div
+            className={`flex-1 flex h-full overflow-hidden transition-all duration-200 ease-out ${
+              activeTab === 'inbox'
+                ? 'block opacity-100 translate-y-0'
+                : 'hidden opacity-0 translate-y-1 pointer-events-none'
+            }`}
+          >
             <InboxPage />
           </div>
 
-          <div className={`flex-1 flex h-full overflow-hidden transition-opacity duration-150 ${activeTab === 'metrics' ? 'block opacity-100' : 'hidden opacity-0 pointer-events-none'}`}>
+          <div
+            className={`flex-1 flex h-full overflow-hidden transition-all duration-200 ease-out ${
+              activeTab === 'metrics'
+                ? 'block opacity-100 translate-y-0'
+                : 'hidden opacity-0 translate-y-1 pointer-events-none'
+            }`}
+          >
             <DashboardPage />
           </div>
 
-          <div className={`flex-1 flex h-full overflow-hidden transition-opacity duration-150 ${activeTab === 'service-status' ? 'block opacity-100' : 'hidden opacity-0 pointer-events-none'}`}>
+          <div
+            className={`flex-1 flex h-full overflow-hidden transition-all duration-200 ease-out ${
+              activeTab === 'service-status'
+                ? 'block opacity-100 translate-y-0'
+                : 'hidden opacity-0 translate-y-1 pointer-events-none'
+            }`}
+          >
             <ServiceStatusPage />
           </div>
 
           {isPropietario && (
             <>
-              <div className={`flex-1 flex h-full overflow-hidden transition-opacity duration-150 ${activeTab === 'config' ? 'block opacity-100' : 'hidden opacity-0 pointer-events-none'}`}>
+              <div
+                className={`flex-1 flex h-full overflow-hidden transition-all duration-200 ease-out ${
+                  activeTab === 'config'
+                    ? 'block opacity-100 translate-y-0'
+                    : 'hidden opacity-0 translate-y-1 pointer-events-none'
+                }`}
+              >
                 <BotConfigPage />
               </div>
 
-              <div className={`flex-1 flex h-full overflow-hidden transition-opacity duration-150 ${activeTab === 'test-lab' ? 'block opacity-100' : 'hidden opacity-0 pointer-events-none'}`}>
+              <div
+                className={`flex-1 flex h-full overflow-hidden transition-all duration-200 ease-out ${
+                  activeTab === 'test-lab'
+                    ? 'block opacity-100 translate-y-0'
+                    : 'hidden opacity-0 translate-y-1 pointer-events-none'
+                }`}
+              >
                 <TestLabPage />
               </div>
 
-              <div className={`flex-1 flex h-full overflow-hidden transition-opacity duration-150 ${activeTab === 'events' ? 'block opacity-100' : 'hidden opacity-0 pointer-events-none'}`}>
+              <div
+                className={`flex-1 flex h-full overflow-hidden transition-all duration-200 ease-out ${
+                  activeTab === 'events'
+                    ? 'block opacity-100 translate-y-0'
+                    : 'hidden opacity-0 translate-y-1 pointer-events-none'
+                }`}
+              >
                 <EventLogPage />
               </div>
             </>

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useCrmStore } from '../../../store/useCrmStore';
+import { FordBrandLogo } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/SonnerToast';
 import { BRAND_CONFIG } from '../../../shared/i18n';
 
@@ -76,8 +77,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onOpenLegalModal }) => {
       >
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center mb-5">
-          <div className="w-9 h-9 rounded-xl bg-[#E8F1FF] text-[#007AFF] flex items-center justify-center mb-2.5">
-            <Sparkles className="w-4.5 h-4.5 text-[#007AFF]" />
+          <div className="mb-2.5">
+            <FordBrandLogo size="lg" variant="squircle" />
           </div>
           <h1 className="text-sm font-semibold tracking-tight text-[#1C1E26]">
             {t('brand.name')}

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { RotateCcw } from 'lucide-react';
 import { useCrmStore } from '../../../store/useCrmStore';
 import { Authority } from '../../../shared/lib/authority';
-import { Button, IconButton } from '../../../shared/ui';
+import { IconButton } from '../../../shared/ui';
 
 interface SidebarFooterProps {
   isCollapsed: boolean;
@@ -20,46 +20,43 @@ export const SidebarFooter: React.FC<SidebarFooterProps> = ({
   const canReset = Authority.canResetSimulator(userRole);
 
   return (
-    <div className="p-4 border-t border-black/[0.03] space-y-3">
+    <div className="p-3 border-t border-slate-100">
       {!isCollapsed ? (
-        <>
-          <div className="flex items-center justify-between text-[10.5px] text-[#86868B] px-1 font-mono">
-            <span>{t('nav.shortcuts', 'Atajos')}:</span>
-            <div className="flex gap-1.5">
-              <kbd className="px-2 py-0.5 bg-white border border-black/[0.06] rounded-md text-[9.5px] text-[#1D1D1F] font-semibold shadow-2xs">
-                ⌘K
-              </kbd>
-              <kbd className="px-2 py-0.5 bg-white border border-black/[0.06] rounded-md text-[9.5px] text-[#1D1D1F] font-semibold shadow-2xs">
-                ⌘J
-              </kbd>
-              <kbd className="px-2 py-0.5 bg-white border border-black/[0.06] rounded-md text-[9.5px] text-[#1D1D1F] font-semibold shadow-2xs">
-                ⌘I
-              </kbd>
-            </div>
+        <div className="flex items-center justify-between gap-2 px-1.5 py-1">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <span>{t('nav.shortcuts', 'Atajos')}</span>
+            <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200/80 rounded text-[10px] font-mono text-slate-600">
+              ⌘K
+            </kbd>
+            <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200/80 rounded text-[10px] font-mono text-slate-600">
+              J/K
+            </kbd>
           </div>
 
           {canReset && (
-            <Button
+            <button
               id="btn-reset-seeds"
-              variant="danger"
-              size="sm"
-              fullWidth
+              type="button"
               onClick={onResetData}
-              leftIcon={<RotateCcw className="size-3.5" />}
+              title={t('nav.resetSimulator', 'Restablecer Simulador')}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
             >
-              {t('nav.resetSimulator', 'Restablecer Simulador')}
-            </Button>
+              <RotateCcw className="size-3" />
+              <span>Reiniciar</span>
+            </button>
           )}
-        </>
+        </div>
       ) : (
         canReset && (
-          <IconButton
-            icon={RotateCcw}
-            variant="danger"
-            size="md"
-            onClick={onResetData}
-            tooltip={t('nav.resetSimulator', 'Restablecer Simulador')}
-          />
+          <div className="flex justify-center">
+            <IconButton
+              icon={RotateCcw}
+              variant="ghost"
+              size="sm"
+              onClick={onResetData}
+              tooltip={t('nav.resetSimulator', 'Restablecer Simulador')}
+            />
+          </div>
         )
       )}
     </div>

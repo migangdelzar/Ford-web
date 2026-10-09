@@ -25,44 +25,44 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
   return (
     <button
       id={`nav-item-${id}`}
+      type="button"
       onClick={onClick}
-      className={`relative w-full flex items-center justify-between px-3.5 py-3 rounded-[22px] transition-all duration-200 ease-out text-left group cursor-pointer ${
+      title={isCollapsed ? label : undefined}
+      className={`relative w-full flex items-center ${
+        isCollapsed ? 'justify-center px-2 py-2.5' : 'justify-between px-3 py-2.5'
+      } rounded-xl transition-all duration-150 ease-out active:scale-[0.98] text-left group cursor-pointer ${
         isActive
-          ? 'text-[#1D1D1F] font-bold shadow-[0_4px_20px_-2px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] border border-black/[0.05]'
-          : 'text-[#86868B] hover:text-[#1D1D1F] hover:bg-[#F5F5F7]/60'
+          ? 'text-slate-900 font-semibold'
+          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
       }`}
     >
+      {/* Single Fluid Active Container with Left Accent Bar inside */}
       {isActive && (
-        <>
-          {/* Luminous Elevated White Card Container */}
-          <motion.div
-            layoutId="sidebar-active-tab-highlight"
-            transition={SNAPPY_SPRING}
-            className="absolute inset-0 bg-[#F8F9FB] rounded-[22px] border border-black/[0.03]"
-          />
-          {/* Active Accent Left Border Indicator */}
-          <span className="absolute left-0 top-3 bottom-3 w-[3.5px] bg-[#0071E3] rounded-r-full z-20 shadow-[0_0_8px_rgba(0,113,227,0.4)]" />
-        </>
+        <motion.div
+          layoutId="sidebar-active-tab-highlight"
+          transition={SNAPPY_SPRING}
+          className="absolute inset-0 bg-slate-100/90 rounded-xl border border-slate-200/70 shadow-2xs overflow-hidden"
+        >
+          <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-[#0071E3]" />
+        </motion.div>
       )}
 
       {/* Nav Content */}
-      <span className="relative z-10 flex items-center gap-3.5 min-w-0">
-        {/* Squircle Icon Tile */}
-        <div
-          className={`size-10 rounded-[14px] flex items-center justify-center transition-all duration-200 shrink-0 ${
+      <span className="relative z-10 flex items-center gap-3 min-w-0">
+        <Icon
+          className={`size-4 shrink-0 transition-transform duration-200 ease-out ${
             isActive
-              ? 'bg-[#0071E3] text-white shadow-[0_4px_12px_rgba(0,113,227,0.35)]'
-              : 'bg-[#F5F5F7] text-[#86868B] group-hover:bg-[#EBEBEF] group-hover:text-[#1D1D1F]'
+              ? 'text-[#0071E3] stroke-[2.25] scale-105'
+              : 'text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 stroke-[1.75]'
           }`}
-        >
-          <Icon className={`size-5 transition-transform duration-200 ${isActive ? 'stroke-[2.25]' : 'stroke-[1.75] group-hover:scale-105'}`} />
-        </div>
+        />
 
-        {/* Text Label */}
         {!isCollapsed && (
           <span
-            className={`truncate text-[13.5px] tracking-tight transition-colors ${
-              isActive ? 'text-[#1D1D1F] font-bold' : 'font-medium text-[#6E6E73] group-hover:text-[#1D1D1F]'
+            className={`truncate text-xs tracking-tight transition-all duration-150 ${
+              isActive
+                ? 'text-slate-900 font-bold'
+                : 'font-medium text-slate-600 group-hover:text-slate-900 group-hover:translate-x-0.5'
             }`}
           >
             {label}
@@ -70,17 +70,18 @@ export const SidebarNavItem: React.FC<SidebarNavItemProps> = ({
         )}
       </span>
 
-      {/* Right Indicator: Blue status dot or numeric badge */}
-      {!isCollapsed && (
+      {/* Right Numeric Counter */}
+      {!isCollapsed && badge !== undefined && (
         <div className="relative z-10 flex items-center">
-          {badge !== undefined ? (
-            <span className="text-[10.5px] px-2 py-0.5 rounded-full font-bold tabular-nums bg-[#0071E3] text-white shadow-xs">
-              {badge}
-            </span>
-          ) : isActive ? (
-            /* Subtle blue status dot matching the design */
-            <span className="size-2 rounded-full bg-[#0071E3] shadow-[0_0_6px_rgba(0,113,227,0.6)] shrink-0 mr-1" />
-          ) : null}
+          <span
+            className={`text-[11px] px-1.5 py-0.5 rounded-md font-mono font-bold tabular-nums transition-colors ${
+              isActive
+                ? 'bg-[#0071E3] text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 group-hover:bg-slate-200/80'
+            }`}
+          >
+            {badge}
+          </span>
         </div>
       )}
     </button>

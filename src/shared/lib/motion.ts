@@ -1,34 +1,64 @@
 import { Transition } from 'motion/react';
 
 /**
- * Emil Kowalski-inspired motion physics & transitions
- * Restrained, buttery, and mathematically calibrated
+ * Emil Kowalski & Apple HIG-inspired motion physics & transitions
+ * Restrained, buttery, and mathematically calibrated with zero-overshoot spring curves.
  */
 
-// Deceleration curve: fast start, gradual settling
+// Custom cubic-bezier deceleration curves: fast initial velocity, smooth gradual settling
 export const EMIL_EASE = [0.16, 1, 0.3, 1] as const;
-export const EMIL_EASE_OUT = [0.23, 1, 0.32, 1] as const;
+export const EMIL_EASE_OUT = [0.22, 1, 0.36, 1] as const;
+export const APPLE_FLUID_EASE = [0.32, 0.72, 0, 1] as const;
 
-// Snappy spring for micro-interactions (buttons, pills, tabs)
+// Snappy spring for micro-interactions (buttons, active pills, segmented tabs, sidebar highlights)
 export const SNAPPY_SPRING: Transition = {
   type: 'spring',
-  stiffness: 500,
-  damping: 36,
-  mass: 0.8,
+  stiffness: 520,
+  damping: 38,
+  mass: 0.75,
 };
 
 export const SPRING_TIGHT: Transition = {
   type: 'spring',
-  stiffness: 450,
-  damping: 32,
+  stiffness: 460,
+  damping: 34,
   mass: 0.7,
 };
 
-// Fluid spring for layout animations (sliding cards, drawers)
+// Fluid spring for layout & container animations (drawers, collapsible sidebars, floating sheets)
 export const FLUID_SPRING: Transition = {
   type: 'spring',
   stiffness: 380,
-  damping: 30,
+  damping: 34,
+  mass: 0.85,
+};
+
+// Page & view switch transition (subtle vertical lift + crisp opacity)
+export const PAGE_TRANSITION: Transition = {
+  duration: 0.22,
+  ease: EMIL_EASE,
+};
+
+export const pageTransitionVariants = {
+  initial: { opacity: 0, y: 6, scale: 0.995 },
+  animate: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.24,
+      ease: EMIL_EASE,
+    },
+  },
+  exit: {
+    opacity: 0,
+    y: -4,
+    scale: 0.995,
+    transition: {
+      duration: 0.14,
+      ease: EMIL_EASE_OUT,
+    },
+  },
 };
 
 // Gentle fade-scale entry (0.97 -> 1.0, never 0)

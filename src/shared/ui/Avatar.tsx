@@ -18,13 +18,38 @@ export interface AvatarProps {
 
 const sizeStyles: Record<
   AvatarSize,
-  { container: string; text: string; statusOffset: string }
+  { container: string; text: string; shapeRadius: string; statusOffset: string }
 > = {
-  xs: { container: 'size-6', text: 'text-[10px]', statusOffset: '-bottom-0.5 -right-0.5' },
-  sm: { container: 'size-7 sm:size-8', text: 'text-xs', statusOffset: '-bottom-0.5 -right-0.5' },
-  md: { container: 'size-9 sm:size-10', text: 'text-sm', statusOffset: '-bottom-0.5 -right-0.5' },
-  lg: { container: 'size-11 sm:size-12', text: 'text-base', statusOffset: '-bottom-1 -right-1' },
-  xl: { container: 'size-14 sm:size-16', text: 'text-lg', statusOffset: '-bottom-1 -right-1' },
+  xs: {
+    container: 'size-6',
+    text: 'text-[10px]',
+    shapeRadius: 'rounded-lg',
+    statusOffset: '-bottom-0.5 -right-0.5',
+  },
+  sm: {
+    container: 'size-8',
+    text: 'text-xs',
+    shapeRadius: 'rounded-xl',
+    statusOffset: '-bottom-0.5 -right-0.5',
+  },
+  md: {
+    container: 'size-9 sm:size-10',
+    text: 'text-sm',
+    shapeRadius: 'rounded-xl',
+    statusOffset: '-bottom-0.5 -right-0.5',
+  },
+  lg: {
+    container: 'size-11 sm:size-12',
+    text: 'text-base',
+    shapeRadius: 'rounded-2xl',
+    statusOffset: '-bottom-0.5 -right-0.5',
+  },
+  xl: {
+    container: 'size-14 sm:size-16',
+    text: 'text-lg',
+    shapeRadius: 'rounded-2xl',
+    statusOffset: '-bottom-1 -right-1',
+  },
 };
 
 export const Avatar: React.FC<AvatarProps> = ({
@@ -34,7 +59,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   shape = 'circle',
   status,
   badge,
-  fallbackBg = 'bg-[#F5F5F7] text-[#1D1D1F] border border-black/[0.08]',
+  fallbackBg = 'bg-slate-100 text-slate-800 border border-slate-200/80',
   className = '',
   alt,
 }) => {
@@ -49,8 +74,8 @@ export const Avatar: React.FC<AvatarProps> = ({
         .join('')
     : '?';
 
-  const shapeClass = shape === 'circle' ? 'rounded-full' : 'rounded-2xl';
-  const { container, text, statusOffset } = sizeStyles[size];
+  const { container, text, shapeRadius, statusOffset } = sizeStyles[size];
+  const shapeClass = shape === 'circle' ? 'rounded-full' : shapeRadius;
 
   return (
     <div className={`relative inline-flex shrink-0 ${container} ${className}`}>
@@ -70,9 +95,9 @@ export const Avatar: React.FC<AvatarProps> = ({
       )}
 
       {status && (
-        <div className={`absolute ${statusOffset} z-10`}>
-          <StatusDot status={status} size={size === 'xs' || size === 'sm' ? 'xs' : 'sm'} />
-        </div>
+        <span className={`absolute ${statusOffset} z-10 flex items-center justify-center pointer-events-none`}>
+          <StatusDot status={status} size={size === 'xs' || size === 'sm' ? 'sm' : 'md'} />
+        </span>
       )}
 
       {badge && <div className={`absolute ${statusOffset} z-10`}>{badge}</div>}

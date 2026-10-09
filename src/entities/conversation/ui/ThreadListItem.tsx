@@ -55,9 +55,9 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = ({
       case 'human':
         return {
           icon: User,
-          color: 'text-[#007AFF]',
+          color: 'text-[#0071E3]',
           label: t('takeover.advisor', 'Asesor'),
-          pillClass: 'bg-blue-50 text-[#007AFF] hover:bg-blue-100/80 border border-blue-200/70',
+          pillClass: 'bg-blue-50/80 text-[#0071E3] hover:bg-blue-100/80 border border-blue-200/70',
         };
       case 'bot':
       default:
@@ -78,10 +78,10 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = ({
       size="md"
       active={isSelected}
       onClick={onSelect}
-      className={`border-l-4 ${
+      className={`transition-colors ${
         isSelected
-          ? 'bg-[#EBF3FF] border-l-[#007AFF] border-y-black/[0.04]'
-          : 'bg-white hover:bg-slate-50/90 border-l-transparent'
+          ? 'bg-[#0071E3]/[0.07]'
+          : 'bg-white hover:bg-slate-50/90'
       }`}
       leading={
         <ChannelAvatar
@@ -92,11 +92,11 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = ({
         />
       }
       title={
-        <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             <span
-              className={`text-xs truncate ${
-                isSelected ? 'text-[#0F172A] font-bold' : 'text-[#1E293B] font-semibold'
+              className={`text-xs sm:text-[13px] truncate ${
+                isSelected ? 'text-[#0071E3] font-bold' : 'text-slate-900 font-semibold'
               }`}
             >
               {conversation.customerName}
@@ -119,14 +119,14 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = ({
             )}
           </div>
 
-          <span className="text-[10px] text-slate-500 font-mono tabular-nums shrink-0">
+          <span className="text-[11px] text-slate-400 font-mono tabular-nums shrink-0">
             {formatRelativeTime(conversation.lastMessageAt)}
           </span>
         </div>
       }
       subtitle={
         <div className="space-y-1.5 mt-0.5">
-          <p className="text-xs text-slate-600 truncate leading-relaxed">
+          <p className="text-xs text-slate-500 truncate leading-relaxed">
             {preview}
           </p>
 
@@ -137,7 +137,7 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = ({
                 e.stopPropagation();
                 onToggleTakeover?.();
               }}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer shadow-2xs ${statusMeta.pillClass}`}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${statusMeta.pillClass}`}
               title={
                 isHuman
                   ? 'Atendido por Asesor humano (Click para transferir a Bot)'
@@ -149,7 +149,7 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = ({
             </button>
 
             {conversation.unreadCount > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-[#007AFF] text-white tabular-nums shadow-2xs">
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 min-w-[18px] text-center rounded-full bg-[#0071E3] text-white tabular-nums">
                 {conversation.unreadCount}
               </span>
             )}

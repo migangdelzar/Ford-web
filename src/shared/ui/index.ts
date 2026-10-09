@@ -28,3 +28,4 @@ export * from './KpiMetricWidget';
 export * from './DataKeyValue';
 export * from './AccordionItem';
 export * from './AlertBanner';
+export * from './FordBrandLogo';

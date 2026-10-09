@@ -9,14 +9,13 @@ import {
   Flame,
   Sun,
   Snowflake,
-  UserCheck,
 } from 'lucide-react';
 import { Conversation } from '../../../types';
 import { ChannelAvatar } from './ChannelAvatar';
 import { MetaWindowBadge } from './MetaWindowBadge';
 import { BotControlSwitch } from '../../../features/takeover/ui/BotControlSwitch';
 import { Authority } from '../../../shared/lib/authority';
-import { IconButton, Badge } from '../../../shared/ui';
+import { IconButton } from '../../../shared/ui';
 
 interface ConversationHeaderProps {
   conversation: Conversation;
@@ -44,10 +43,10 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   const isHumanHandled = conversation.status === 'human';
 
   return (
-    <header className="bg-white border-b border-black/[0.06] shrink-0 shadow-2xs">
-      {/* ── ROW 1: PRIMARY IDENTITY, MOBILE BACK & DESKTOP ACTIONS ── */}
-      <div className="px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2.5">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+    <header className="bg-white border-b border-slate-200/80 shrink-0">
+      {/* ── ROW 1: IDENTITY, BACK NAVIGATION & PRIMARY ACTIONS ── */}
+      <div className="px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div className="md:hidden shrink-0">
             <IconButton
               icon={ArrowLeft}
@@ -67,7 +66,7 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
 
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 min-w-0">
-              <h2 className="text-xs sm:text-sm font-bold text-[#1D1D1F] truncate leading-snug">
+              <h2 className="text-sm font-bold text-slate-900 truncate leading-snug">
                 {conversation.customerName}
               </h2>
               {conversation.leadTemperature === 'hot' && (
@@ -82,24 +81,20 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
               )}
               {conversation.leadTemperature === 'cold' && (
                 <span title="Prospecto Frío" className="inline-flex">
-                  <Snowflake className="size-3.5 text-slate-500 shrink-0" />
+                  <Snowflake className="size-3.5 text-slate-400 shrink-0" />
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[11px] text-[#86868B] font-mono truncate max-w-[120px] sm:max-w-[200px]">
+            <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500 truncate">
+              <span className="font-mono truncate max-w-[130px] sm:max-w-[200px]">
                 {conversation.customerHandle}
               </span>
               {isHumanHandled && attribution.assignedAdvisor && (
                 <>
-                  <span className="text-[#86868B] text-[10px] select-none">·</span>
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#E8F1FF] text-[#0071E3] border border-[#0071E3]/25 shrink-0 whitespace-nowrap shadow-2xs">
-                    <UserCheck className="size-3 text-[#0071E3] shrink-0" />
-                    <span className="truncate max-w-[120px]">{attribution.assignedAdvisor.name}</span>
-                    <span className="inline-flex items-center justify-center bg-[#0071E3] text-white text-[9px] font-bold px-1.5 py-0.2 min-w-[16px] h-3.5 rounded-full shadow-2xs">
-                      {conversation.unreadCount && conversation.unreadCount > 0 ? conversation.unreadCount : 1}
-                    </span>
+                  <span className="text-slate-300 select-none" aria-hidden="true">·</span>
+                  <span className="font-medium text-[#0071E3] truncate max-w-[110px] sm:max-w-[150px]">
+                    {attribution.assignedAdvisor.name}
                   </span>
                 </>
               )}
@@ -107,91 +102,70 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
           </div>
         </div>
 
-        <div className="hidden sm:flex items-center gap-2.5 shrink-0">
+        {/* Right Controls: Unified across mobile & desktop */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <BotControlSwitch
-            id="desktop-header"
+            id="conversation-header"
             status={conversation.status}
             onToggle={onToggleTakeover}
             onSetMode={onSetTakeover}
+            size="sm"
           />
 
           <motion.button
-            whileTap={{ scale: 0.94 }}
+            whileTap={{ scale: 0.95 }}
             type="button"
             onClick={onToggleInspector}
             title={`${t('prospect.title')} (⌘I)`}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+            className={`inline-flex items-center justify-center gap-1.5 h-8 px-2.5 sm:px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
               isInspectorOpen
-                ? 'bg-[#1D1D1F] border-[#1D1D1F] text-white shadow-xs'
-                : 'bg-white hover:bg-[#F5F5F7] border-black/10 text-[#1D1D1F] shadow-2xs'
+                ? 'bg-slate-900 border-slate-900 text-white'
+                : 'bg-white hover:bg-slate-50 border-slate-200/90 text-slate-800'
             }`}
           >
-            <FileText className="size-3.5" />
-            <span>{t('conversation.sheet')}</span>
-            <kbd className={`hidden md:inline-block px-1 py-0.5 rounded text-[9px] font-mono ${
-              isInspectorOpen ? 'bg-white/20 text-white' : 'bg-[#F5F5F7] text-[#86868B]'
-            }`}>
+            <FileText className="size-3.5 shrink-0" />
+            <span className="hidden sm:inline">{t('conversation.sheet')}</span>
+            <kbd
+              className={`hidden lg:inline-block px-1 py-0.5 rounded text-[9px] font-mono ${
+                isInspectorOpen ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
               ⌘I
             </kbd>
           </motion.button>
         </div>
-
-        <div className="flex sm:hidden items-center shrink-0">
-          <IconButton
-            icon={FileText}
-            size="sm"
-            variant={isInspectorOpen ? 'primary' : 'secondary'}
-            onClick={onToggleInspector}
-            tooltip={t('prospect.title')}
-          />
-        </div>
       </div>
 
-      {/* ── ROW 2: CONTEXT & STATUS STRIP (Vehicle & Down payment) ── */}
-      <div className="px-3 sm:px-4 py-1.5 bg-[#F5F5F7] border-t border-black/[0.04] flex items-center justify-between gap-2 text-xs text-[#1D1D1F]">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          {conversation.extractedFields.interest && (
-            <span className="text-[#1D1D1F] font-semibold truncate flex items-center gap-1 max-w-[180px] sm:max-w-[320px]">
+      {/* ── ROW 2: COMPACT CONTEXT & SLA WINDOW BAR ── */}
+      <div className="px-3 sm:px-5 py-1.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 min-w-0 truncate">
+          {conversation.extractedFields.interest ? (
+            <span className="text-slate-800 font-medium truncate flex items-center gap-1.5">
               <Car className="size-3.5 text-[#0071E3] shrink-0" />
               <span className="truncate">{conversation.extractedFields.interest}</span>
             </span>
+          ) : (
+            <span className="text-slate-400 text-[11px] truncate">Sin vehículo asignado</span>
           )}
 
           {conversation.extractedFields.budget && (
             <>
-              <span className="text-[#86868B] select-none" aria-hidden="true">·</span>
-              <span className="text-[#248A3D] font-semibold truncate flex items-center gap-1">
-                <BadgeDollarSign className="size-3.5 text-[#34C759] shrink-0" />
+              <span className="text-slate-300 select-none" aria-hidden="true">·</span>
+              <span className="text-emerald-700 font-medium truncate hidden xs:flex sm:flex items-center gap-1">
+                <BadgeDollarSign className="size-3.5 text-emerald-600 shrink-0" />
                 <span className="truncate">{conversation.extractedFields.budget}</span>
               </span>
             </>
           )}
         </div>
 
-        <div className="hidden sm:block shrink-0">
+        <div className="shrink-0">
           <MetaWindowBadge
             isOpen={conversation.isWindowOpen}
             onReopen={onReopenWindow}
             onSimulateExpire={onSimulateExpire}
           />
         </div>
-      </div>
-
-      {/* ── ROW 3: MOBILE ONLY CONTROLS STRIP ── */}
-      <div className="sm:hidden px-3 py-1.5 bg-white border-t border-black/[0.04] flex items-center justify-between gap-2">
-        <MetaWindowBadge
-          isOpen={conversation.isWindowOpen}
-          onReopen={onReopenWindow}
-          onSimulateExpire={onSimulateExpire}
-        />
-
-        <BotControlSwitch
-          id="mobile-header"
-          status={conversation.status}
-          onToggle={onToggleTakeover}
-          onSetMode={onSetTakeover}
-          size="sm"
-        />
       </div>
     </header>
   );

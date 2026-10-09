@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import {
   Inbox,
@@ -7,14 +7,15 @@ import {
   Activity,
   FlaskConical,
   ScrollText,
-  Sparkles,
   PanelLeftClose,
   PanelLeft,
   SlidersHorizontal,
 } from 'lucide-react';
 import { useCrmStore } from '../../../store/useCrmStore';
+import { FordBrandLogo } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/SonnerToast';
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog';
+import { FLUID_SPRING } from '../../../shared/lib/motion';
 import { SidebarNavItem } from './SidebarNavItem';
 import { SidebarFooter } from './SidebarFooter';
 
@@ -44,106 +45,118 @@ export const SidebarWidget: React.FC = () => {
     });
   };
 
-  const allNavItems = [
+  const navItems = [
     {
       id: 'inbox' as const,
       label: t('nav.inbox', 'Bandeja'),
       icon: Inbox,
       badge: totalUnread > 0 ? totalUnread : undefined,
+      show: true,
     },
     {
       id: 'metrics' as const,
       label: userRole === 'asesor' ? t('nav.myStats', 'Mis Números') : t('nav.metrics', 'Métricas'),
       icon: BarChart3,
+      show: true,
     },
     {
       id: 'service-status' as const,
       label: t('nav.serviceStatus', 'Estado de Servicios'),
       icon: Activity,
-    },
-    {
-      id: 'config' as const,
-      label: t('nav.botRules', 'Reglas y Tono'),
-      icon: SlidersHorizontal,
+      show: true,
     },
     {
       id: 'test-lab' as const,
       label: t('nav.testLab', 'Diagnóstico'),
       icon: FlaskConical,
+      show: userRole === 'propietario',
+    },
+    {
+      id: 'config' as const,
+      label: t('nav.botRules', 'Reglas y Tono'),
+      icon: SlidersHorizontal,
+      show: userRole === 'propietario',
     },
     {
       id: 'events' as const,
       label: t('nav.events', 'Auditoría'),
       icon: ScrollText,
+      show: userRole === 'propietario',
     },
   ];
 
-  const primaryNavItems = allNavItems.filter((item) => {
-    // Propietario has access to all sections
-    if (userRole === 'propietario') return true;
-    // Gerente and Asesor have access to inbox, metrics, and service-status
-    if (userRole === 'gerente' || userRole === 'asesor') {
-      return item.id === 'inbox' || item.id === 'metrics' || item.id === 'service-status';
-    }
-    return true;
-  });
+  const visibleNavItems = navItems.filter((item) => item.show);
 
   return (
     <>
       <aside
         id="main-sidebar"
-        className={`hidden md:flex shrink-0 bg-white border-r border-[#EEF0F3] flex-col justify-between select-none h-screen text-[#86868B] transition-all duration-200 ease-in-out z-20 ${
-          isCollapsed ? 'w-20' : 'w-72'
+        className={`hidden md:flex shrink-0 bg-white border-r border-slate-200/70 flex-col justify-between select-none h-screen text-slate-600 transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] z-20 overflow-hidden ${
+          isCollapsed ? 'w-[72px]' : 'w-64'
         }`}
       >
-        <div className="flex flex-col flex-1 overflow-y-auto">
-          {/* Atelier Brand Header */}
-          <div className="h-20 px-5 flex items-center justify-between border-b border-[#EEF0F3]">
+        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+          {/* Brand Header aligned to 56px (h-14) to match AppHeaderWidget */}
+          <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200/70 shrink-0">
             {!isCollapsed ? (
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="size-10 rounded-2xl bg-gradient-to-tr from-[#0071E3] to-[#409CFF] text-white flex items-center justify-center shadow-md shadow-[#0071E3]/20 shrink-0">
-                  <Sparkles className="size-5" />
-                </div>
-                <div className="min-w-0">
-                  <span className="font-display font-bold text-sm tracking-tight text-[#1D1D1F] block leading-tight truncate">
-                    {t('brand.name', 'Ford Uruapan')}
+              <div className="flex items-center gap-2.5 min-w-0">
+                <FordBrandLogo size="md" variant="squircle" />
+                <motion.div
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="min-w-0"
+                >
+                  <span className="font-display font-bold text-xs tracking-tight text-slate-900 block leading-tight truncate">
+                    {t('brand.name', 'Ford')}
                   </span>
-                  <span className="text-[10.5px] font-semibold text-[#86868B] block leading-tight mt-0.5 truncate">
-                    {t('brand.tagline', 'Concierge IA')}
+                  <span className="text-[11px] font-medium text-slate-500 block leading-tight truncate">
+                    {t('brand.tagline', 'CRM de Ventas')}
                   </span>
-                </div>
+                </motion.div>
               </div>
             ) : (
-              <div className="size-10 mx-auto rounded-2xl bg-gradient-to-tr from-[#0071E3] to-[#409CFF] text-white flex items-center justify-center shadow-md shadow-[#0071E3]/20 shrink-0">
-                <Sparkles className="size-5" />
+              <div className="mx-auto flex items-center justify-center">
+                <FordBrandLogo size="md" variant="squircle" />
               </div>
             )}
 
-            <motion.button
-              whileTap={{ scale: 0.92 }}
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              title={isCollapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'}
-              className="p-2 rounded-xl text-[#86868B] hover:text-[#1D1D1F] hover:bg-black/[0.04] transition-colors cursor-pointer"
-            >
-              {isCollapsed ? (
-                <PanelLeft className="size-4 stroke-[1.75]" />
-              ) : (
+            {!isCollapsed && (
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={() => setIsCollapsed(true)}
+                title="Contraer barra lateral"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+              >
                 <PanelLeftClose className="size-4 stroke-[1.75]" />
-              )}
-            </motion.button>
+              </motion.button>
+            )}
           </div>
 
-          {/* Primary Navigation with Generous Spacing */}
-          <div className="p-4 space-y-2">
-            <div className="px-2 pt-1 pb-0.5">
-              {!isCollapsed && (
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#86868B]">
-                  Menú
-                </span>
-              )}
-            </div>
+          <AnimatePresence initial={false}>
+            {isCollapsed && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.15 }}
+                className="pt-3 flex justify-center shrink-0"
+              >
+                <motion.button
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => setIsCollapsed(false)}
+                  title="Expandir barra lateral"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <PanelLeft className="size-4 stroke-[1.75]" />
+                </motion.button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            {primaryNavItems.map((item) => (
+          {/* Left Navigation Menu (Unified fluid list so active highlight glides smoothly across all items) */}
+          <nav aria-label="Main Navigation" className="p-3 space-y-1">
+            {visibleNavItems.map((item) => (
               <SidebarNavItem
                 key={item.id}
                 id={item.id}
@@ -152,16 +165,13 @@ export const SidebarWidget: React.FC = () => {
                 isActive={activeTab === item.id}
                 isCollapsed={isCollapsed}
                 badge={item.badge}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  if (isCollapsed) setIsCollapsed(false);
-                }}
+                onClick={() => setActiveTab(item.id)}
               />
             ))}
-          </div>
+          </nav>
         </div>
 
-        {/* Footer Reset Button & Shortcuts */}
+        {/* Footer Shortcuts & Reset */}
         <SidebarFooter
           isCollapsed={isCollapsed}
           onResetData={() => setIsConfirmOpen(true)}

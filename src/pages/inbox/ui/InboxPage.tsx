@@ -13,7 +13,7 @@ export const InboxPage: React.FC = () => {
   return (
     <div id="inbox-page" className="flex-1 flex h-full overflow-hidden relative">
       {/* Desktop Split View: Thread list on left */}
-      <div className="hidden md:flex h-full shrink-0 md:w-80 lg:w-80 border-r border-slate-200/80">
+      <div className="hidden md:flex h-full shrink-0 md:w-72 lg:w-80 xl:w-[340px] border-r border-slate-200/80">
         <ThreadListWidget />
       </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { User, Bot, RotateCcw, Search, MessageSquare } from 'lucide-react';
+import { User, Bot, RotateCcw, Search } from 'lucide-react';
 import { useCrmStore } from '../../../store/useCrmStore';
 import { ThreadListItem } from '../../../entities/conversation/ui/ThreadListItem';
 import { SlidingFilterBar } from '../../../shared/ui/SlidingFilterBar';
@@ -89,46 +89,33 @@ export const ThreadListWidget: React.FC = () => {
   return (
     <div
       id="thread-list-pane"
-      className="w-full flex-1 border-r border-[#EEF0F3] bg-white flex flex-col h-full overflow-hidden"
+      className="w-full flex-1 border-r border-slate-200/80 bg-white flex flex-col h-full overflow-hidden"
     >
-      {/* Compact High-Yield Header: Preserves icon + clean title + live count */}
-      <div className="p-3 bg-white border-b border-[#EEF0F3] space-y-2.5 shrink-0">
-        {/* Row 0: Inline Header with Icon, Title, Counter Badge, & Popover Filter */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="size-6.5 rounded-lg bg-[#0071E3]/10 text-[#0071E3] flex items-center justify-center shrink-0">
-              <MessageSquare className="size-3.5 stroke-[2.25]" />
-            </div>
-            <h1 className="text-base font-display font-bold text-[#1D1D1F] tracking-tight">
-              Bandeja
-            </h1>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums bg-[#0071E3]/10 text-[#0071E3]">
-              {counts.all}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <FilterPopover
-              channelFilter={channelFilter}
-              setChannelFilter={setChannelFilter}
-              tempFilter={tempFilter}
-              setTempFilter={setTempFilter}
-              onClearAll={() => {
-                setChannelFilter('all');
-                setTempFilter('all');
-              }}
-              activeCount={activeFiltersCount}
+      {/* Streamlined Controls Header (no repeated page title) */}
+      <div className="px-3.5 py-3 bg-white border-b border-slate-200/70 space-y-2.5 shrink-0">
+        {/* Row 1: Search Input + Filter Button on a single clean row */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <SearchInput
+              id="thread-search-input"
+              value={searchQuery}
+              onChangeValue={setSearchQuery}
+              placeholder={t('threads.searchPlaceholder')}
             />
           </div>
-        </div>
 
-        {/* Row 1: Streamlined Search Bar */}
-        <SearchInput
-          id="thread-search-input"
-          value={searchQuery}
-          onChangeValue={setSearchQuery}
-          placeholder={t('threads.searchPlaceholder')}
-        />
+          <FilterPopover
+            channelFilter={channelFilter}
+            setChannelFilter={setChannelFilter}
+            tempFilter={tempFilter}
+            setTempFilter={setTempFilter}
+            onClearAll={() => {
+              setChannelFilter('all');
+              setTempFilter('all');
+            }}
+            activeCount={activeFiltersCount}
+          />
+        </div>
 
         {/* Row 2: Fluid Smart Segmented Views (Todos / Asesor / Bot) */}
         <div className="w-full">
@@ -174,7 +161,7 @@ export const ThreadListWidget: React.FC = () => {
       </div>
 
       {/* Thread List Items: Continuous Full-Width Section with Crisp Dividers */}
-      <div className="flex-1 overflow-y-auto bg-white divide-y divide-[#EEF0F3] pb-20 md:pb-4">
+      <div className="flex-1 overflow-y-auto bg-white divide-y divide-slate-100 pb-24 md:pb-4">
         {filteredConversations.length === 0 ? (
           <div className="p-6">
             <EmptyState
@@ -182,7 +169,7 @@ export const ThreadListWidget: React.FC = () => {
               title={t('threads.emptyTitle')}
               description={t('threads.emptySubtitle')}
               action={
-                (activeFiltersCount > 0 || smartView !== 'all' || searchQuery) ? (
+                activeFiltersCount > 0 || smartView !== 'all' || searchQuery ? (
                   <Button
                     variant="secondary"
                     size="xs"
