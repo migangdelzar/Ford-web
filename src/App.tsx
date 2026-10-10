@@ -16,6 +16,7 @@ import { LegalModal, LegalTab } from './features/compliance/ui/LegalModal';
 import { useSseEvents } from './shared/lib/useSseEvents';
 import { OfflineIndicator } from './shared/lib/pwa';
 import { readOperatorSession } from './shared/api/operatorAuth';
+import { unauthenticatedRedirect } from './shared/lib/authRouting';
 
 export function AppContent() {
   const store = useCrmStore();
@@ -48,6 +49,12 @@ export function AppContent() {
   useEffect(() => {
     if (isAuthenticated && activeTenantId) void fetchConversations();
   }, [isAuthenticated, activeTenantId, fetchConversations]);
+
+  useEffect(() => {
+    if (!authReady || isAuthenticated) return;
+    const redirectTo = unauthenticatedRedirect(window.location.pathname);
+    if (redirectTo) window.location.replace(redirectTo);
+  }, [authReady, isAuthenticated]);
 
   const [legalModalOpen, setLegalModalOpen] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState<LegalTab>('privacy');
@@ -109,7 +116,7 @@ export function AppContent() {
   }, [isAuthenticated, conversations, selectedConversationId, channelFilter, selectConversation]);
 
   // If not logged in, enforce the official Login Portal flow
-  if (!authReady) {
+  if (!authReady || (!isAuthenticated && unauthenticatedRedirect(window.location.pathname))) {
     return <div className="min-h-screen grid place-items-center text-sm text-slate-500">Verificando sesión…</div>;
   }
 
