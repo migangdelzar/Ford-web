@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { proxyFordOriginRequest } from '../../functions/_proxy';
+import { proxyFordOriginRequest, shouldUseFordWebLogin } from '../../functions/_proxy';
 
 describe('Pages same-origin proxy', () => {
+  it('serves GET /login from the Ford-web app while keeping login API routes proxied', () => {
+    expect(shouldUseFordWebLogin(new Request('https://crm.example/login'))).toBe(true);
+    expect(shouldUseFordWebLogin(new Request('https://crm.example/login', { method: 'POST' }))).toBe(false);
+    expect(shouldUseFordWebLogin(new Request('https://crm.example/login/ott?token=opaque'))).toBe(false);
+  });
+
   it('forwards only approved routes and replaces spoofable forwarding headers', async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('{"ok":true}', { headers: { 'content-type': 'application/json' } }));
     const request = new Request('https://crm.example/api/v1/leads?cursor=next', {

@@ -1,4 +1,4 @@
-const ALLOWED_PREFIXES = ['/api', '/oauth2', '/.well-known', '/login', '/webauthn'];
+const ALLOWED_PREFIXES = ['/api', '/oauth2', '/.well-known', '/login/ott', '/login/webauthn', '/webauthn'];
 const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'cookie', 'origin', 'referer', 'x-xsrf-token'];
 const HOP_BY_HOP_RESPONSE_HEADERS = new Set([
   'connection', 'content-length', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
@@ -11,7 +11,7 @@ export async function proxyFordOriginRequest(
   fetcher: typeof fetch = fetch,
 ): Promise<Response> {
   const publicUrl = new URL(request.url);
-  if (!isAllowedPath(publicUrl.pathname)) return Response.json({ error: 'route_not_found' }, { status: 404 });
+  if (!isAllowedPath(publicUrl.pathname, request.method)) return Response.json({ error: 'route_not_found' }, { status: 404 });
 
   let origin: URL;
   try {
@@ -59,7 +59,13 @@ export async function proxyFordOriginRequest(
   }
 }
 
-function isAllowedPath(pathname: string): boolean {
+export function shouldUseFordWebLogin(request: Request): boolean {
+  const pathname = new URL(request.url).pathname;
+  return pathname === '/login' && (request.method === 'GET' || request.method === 'HEAD');
+}
+
+function isAllowedPath(pathname: string, method: string): boolean {
+  if (pathname === '/login') return method === 'POST';
   return ALLOWED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { FormEvent, useState } from 'react';
 import { motion } from 'motion/react';
 import { KeyRound, Mail } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { FordBrandLogo } from '../../../shared/ui';
+import { readBffCsrfToken } from '../../../shared/api/operatorAuth';
+import { authenticateWithPasskey } from '../passkeyLogin';
 
 interface LoginPageProps {
   onOpenLegalModal?: (tab: 'privacy' | 'terms') => void;
@@ -11,6 +13,47 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onOpenLegalModal, authUnavailable = false }) => {
   const { t } = useTranslation();
+  const isSpringLogin = window.location.pathname === '/login';
+  const [showEmail, setShowEmail] = useState(false);
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const handlePasskey = async () => {
+    if (!isSpringLogin) return;
+    setBusy(true);
+    setError('');
+    try {
+      window.location.assign(await authenticateWithPasskey());
+    } catch {
+      setError('No se pudo iniciar sesión con passkey. Puede solicitar un enlace por correo.');
+      setBusy(false);
+    }
+  };
+
+  const handleEmailSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const csrf = await readBffCsrfToken();
+      const body = new URLSearchParams({ email });
+      const response = await fetch('/api/auth/one-time-token', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { accept: 'application/json', 'content-type': 'application/x-www-form-urlencoded', [csrf.headerName]: csrf.token },
+        body,
+      });
+      if (!response.ok && response.status !== 202) throw new Error('Email sign-in request failed');
+      setMessage('Si la cuenta está activa, enviaremos un enlace de acceso.');
+    } catch {
+      setError('No se pudo solicitar el enlace. Inténtelo de nuevo en unos minutos.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="min-h-screen w-full bg-[#F8F9FB] flex flex-col justify-between items-center px-4 py-8 select-none text-[#1C1E26] font-sans antialiased">
       <div className="w-full" />
@@ -33,11 +76,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onOpenLegalModal, authUnav
         )}
 
         <a
-          href="/api/auth/login"
+          href={isSpringLogin ? '#passkey' : '/api/auth/login'}
+          onClick={isSpringLogin ? (event) => { event.preventDefault(); void handlePasskey(); } : undefined}
+          aria-disabled={busy}
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] hover:bg-[#0062CC] px-4 py-3 text-sm font-semibold text-white transition-colors"
         >
           <KeyRound className="size-4" />
-          Iniciar sesión con passkey
+          {busy ? 'Procesando…' : 'Iniciar sesión con passkey'}
         </a>
 
         <div className="my-5 flex items-center gap-3 text-[10px] text-[#9CA3AF]">
@@ -47,15 +92,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onOpenLegalModal, authUnav
         </div>
 
         <a
-          href="/api/auth/login"
+          href={isSpringLogin ? '#email-recovery' : '/api/auth/login'}
+          onClick={isSpringLogin ? (event) => { event.preventDefault(); setShowEmail(true); } : undefined}
           className="w-full flex items-center justify-center gap-2 rounded-xl border border-[#EEF0F3] bg-white px-4 py-2.5 text-xs font-semibold text-[#1C1E26] hover:bg-slate-50"
         >
           <Mail className="size-3.5" />
-          Continuar con correo
+          {isSpringLogin ? 'Solicitar enlace por correo' : 'Continuar con correo'}
         </a>
         <p className="mt-2 text-center text-[10px] leading-relaxed text-[#6B7280]">
-          En la pantalla segura de Ford puedes solicitar un enlace de un solo uso. La autenticación termina en esta sesión.
+          {isSpringLogin ? 'Acceda con su passkey o solicite un enlace de un solo uso.' : 'La autenticación segura continúa en esta sesión.'}
         </p>
+        {isSpringLogin && showEmail && (
+          <form className="mt-4 space-y-3" onSubmit={handleEmailSubmit}>
+            <label className="block text-xs font-medium" htmlFor="login-email">Correo electrónico</label>
+            <input id="login-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-xl border border-[#D9DDE5] px-3 py-2.5 text-sm" />
+            <button type="submit" disabled={busy} className="w-full rounded-xl bg-[#1C1E26] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy ? 'Enviando…' : 'Enviar enlace'}</button>
+          </form>
+        )}
+        {message && <p role="status" className="mt-3 text-xs text-green-800">{message}</p>}
+        {error && <p role="alert" className="mt-3 text-xs text-red-700">{error}</p>}
       </motion.div>
 
       <footer className="w-full max-w-sm flex items-center justify-between text-[11px] text-[#9CA3AF] px-1">
