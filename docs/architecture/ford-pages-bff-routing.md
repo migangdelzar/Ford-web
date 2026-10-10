@@ -58,10 +58,10 @@ Whether access tokens stay entirely server-side depends on the implemented BFF/s
 
 | Record | Target | Used by |
 |---|---|---|
-| `ford.emme.business` | Cloudflare Pages custom-domain target for the `ford-crm-ui` project | Browser-facing UI and same-origin paths |
+| `ford.emme.business` | `ford-crm-ui.pages.dev` | Browser-facing Pages UI and same-origin paths |
 | `ford-origin.emme.business` | Tunnel target `07b1cb41-6306-4b35-9331-5078a7c102d8.cfargotunnel.com` | Pages Function’s server-side upstream |
 
-Both records should be managed in the `emme.business` Cloudflare zone with proxying enabled where Cloudflare requires it. Add `ford.emme.business` as a custom domain in the Pages project. DNS by itself cannot route `/api` separately from `/`; Pages Functions send dynamic paths to the origin. Tunnel then splits those paths between the private BFF and Spring listeners on emme-1.
+Both records are managed in the `emme.business` Cloudflare zone. The origin Tunnel record is proxied. The Pages custom-domain record is currently DNS-only: proxying it caused a 522 while the Pages domain was still validating; DNS-only resolved it and the domain is now active. DNS by itself cannot route `/api` separately from `/`; Pages Functions send dynamic paths to the origin. Tunnel then splits those paths between the BFF and Spring listeners on emme-1.
 
 Expected Tunnel ingress shape (rules are evaluated top to bottom; keep the catch-all last):
 
@@ -88,14 +88,12 @@ The BFF listens privately on emme-1 port `3001` and forwards approved applicatio
 
 Repos and deployments stay separate. The shared browser origin is provided by Pages Functions, not by placing both codebases in one repository or container.
 
-## Current setup checklist
+## Deployment status
 
-- [ ] Configure `ford.emme.business` as the `ford-crm-ui` Pages custom domain and point its DNS record to the Pages project.
-- [ ] Create/verify `ford-origin.emme.business` Tunnel DNS record.
-- [ ] Configure Tunnel ingress for `ford-origin.emme.business`: `/api/*` to BFF, OAuth/login/OTP/passkey routes to Spring.
-- [ ] Set Pages project variable `FORD_ORIGIN_URL=https://ford-origin.emme.business`.
-- [ ] Deploy the BFF image and Ford-service stack; confirm BFF health before switching traffic.
-- [ ] Confirm each proxied auth/API path, cookie behavior, redirects, CSRF controls, and passkey/OTP flows against the deployed backend.
-- [ ] Verify UI, API, login, logout, and passkey flows through `https://ford.emme.business` in a browser.
-
-Until these items are verified, this document describes the target architecture, not proof that every production route is live.
+- [x] `ford.emme.business` is attached to Pages and its custom domain is active.
+- [x] `ford-origin.emme.business` points to the existing Cloudflare Tunnel.
+- [x] Tunnel sends `/api/*` to BFF port `3001` and OAuth/login/OTP/passkey paths to Spring port `8080`.
+- [x] Pages Function has `FORD_ORIGIN_URL=https://ford-origin.emme.business`.
+- [x] Ford-service and BFF images deployed from GHCR to emme-1; both health checks pass.
+- [x] UI, API health, OIDC discovery, and BFF login redirect verified through `https://ford.emme.business`.
+- [ ] Complete an interactive browser sign-in, logout, and passkey/OTP test. During verification, Spring’s authorization endpoint returned 401 instead of redirecting to `/login`; a Spring Security fix is being prepared.
