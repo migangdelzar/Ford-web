@@ -1,4 +1,4 @@
-import { readBffCsrfToken } from './operatorAuth';
+import { readCsrfToken } from './operatorAuth';
 
 export interface AiTurnRequest {
   conversationId?: string;
@@ -20,7 +20,7 @@ export interface AiTurnResponse {
 }
 
 export async function sendAiTurn(request: AiTurnRequest): Promise<AiTurnResponse> {
-  const csrf = await readBffCsrfToken();
+  const csrf = await readCsrfToken();
   const response = await fetch('/api/v1/ai/respond', {
     method: 'POST',
     credentials: 'same-origin',

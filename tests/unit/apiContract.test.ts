@@ -41,9 +41,12 @@ describe('published API contract', () => {
     expect(webJson).toEqual(expected);
   });
 
-  it('documents CSRF-aware OTP auth and uses the canonical AI endpoint for Test Lab', () => {
+  it('documents Spring session auth and uses the canonical AI endpoint for Test Lab', () => {
     expect(webRoot.paths['/api/auth/csrf']?.get).toBeDefined();
     expect(webRoot.paths['/api/auth/one-time-token']?.post).toBeDefined();
+    expect(webRoot.paths['/api/auth/me']?.get?.security).toEqual([{ operatorSessionCookie: [] }]);
+    expect(webRoot.paths['/api/auth/logout']?.post?.security).toEqual([{ operatorSessionCookie: [] }]);
+    expect(webRoot.components.securitySchemes.operatorSessionCookie.name).toBe('SESSION');
     expect(webRoot.paths['/api/v1/ai/respond']?.post).toBeDefined();
     expect(webRoot.paths['/api/testlab/respond']).toBeUndefined();
   });

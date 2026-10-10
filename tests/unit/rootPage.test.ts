@@ -22,4 +22,15 @@ describe('root page auth routing', () => {
     expect(await response.text()).toBe('app');
     expect(next).toHaveBeenCalledOnce();
   });
+
+  it('serves the CRM app for a Spring Security session cookie', async () => {
+    const next = vi.fn(async () => new Response('app'));
+    const response = await onRequest({
+      request: new Request('https://crm.example/', { headers: { cookie: 'SESSION=spring-opaque' } }),
+      next,
+    });
+
+    expect(await response.text()).toBe('app');
+    expect(next).toHaveBeenCalledOnce();
+  });
 });

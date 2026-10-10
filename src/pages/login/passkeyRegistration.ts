@@ -1,4 +1,4 @@
-import { readBffCsrfToken } from '../../shared/api/operatorAuth';
+import { readCsrfToken } from '../../shared/api/operatorAuth';
 
 interface RegistrationCredentialDescriptor extends Omit<PublicKeyCredentialDescriptor, 'id'> {
   id: string;
@@ -12,7 +12,7 @@ interface ServerRegistrationOptions extends Omit<PublicKeyCredentialCreationOpti
 
 interface PasskeyRegistrationDependencies {
   fetcher?: typeof fetch;
-  csrfReader?: typeof readBffCsrfToken;
+  csrfReader?: typeof readCsrfToken;
   createCredential?: (options: PublicKeyCredentialCreationOptions) => Promise<PublicKeyCredential | null>;
 }
 
@@ -25,7 +25,7 @@ export async function registerPasskey(dependencies: PasskeyRegistrationDependenc
     throw new Error('Este navegador no admite passkeys.');
   }
 
-  const csrf = await (dependencies.csrfReader ?? readBffCsrfToken)();
+  const csrf = await (dependencies.csrfReader ?? readCsrfToken)();
   const optionsResponse = await fetcher('/webauthn/register/options', {
     method: 'POST',
     credentials: 'same-origin',

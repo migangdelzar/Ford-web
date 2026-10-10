@@ -1,4 +1,4 @@
-import { readBffCsrfToken } from './operatorAuth';
+import { readCsrfToken } from './operatorAuth';
 
 export interface ConversationRecord {
   id: string;
@@ -89,7 +89,7 @@ export async function sendConversationMessage(
   content: string,
   internalNote = false,
 ): Promise<{ messageId: string; conversationVersion: number; acceptedAt: string }> {
-  const csrf = await readBffCsrfToken();
+  const csrf = await readCsrfToken();
   const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}/messages?tenantId=${encodeURIComponent(tenantId)}`, {
     method: 'POST',
     credentials: 'same-origin',
@@ -122,7 +122,7 @@ async function getPage<T>(url: string): Promise<Page<T>> {
 }
 
 async function postHandoff(url: string, body?: object): Promise<HandoffRecord> {
-  const csrf = await readBffCsrfToken();
+  const csrf = await readCsrfToken();
   const response = await fetch(url, {
     method: 'POST',
     credentials: 'same-origin',

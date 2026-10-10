@@ -4,7 +4,7 @@ import fs from "fs";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-import { createBffProxy } from "./src/server/bffProxy";
+import { createFordServiceProxy } from "./src/server/fordServiceProxy";
 
 dotenv.config();
 
@@ -14,15 +14,10 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 
-const fordBffUrl = process.env.FORD_BFF_URL?.trim();
-if (fordBffUrl) {
-  app.use(['/api/auth', '/api/v1'], createBffProxy(fordBffUrl));
-} else {
-  app.use(['/api/auth', '/api/v1'], (_req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(503).json({ error: 'ford_bff_not_configured' });
-  });
-}
+const fordServiceUrl = process.env.FORD_SERVICE_URL?.trim() || 'http://127.0.0.1:8080';
+const fordServiceProxy = createFordServiceProxy(fordServiceUrl);
+app.use(['/api/auth', '/api/v1', '/webauthn', '/login/ott', '/login/webauthn'], fordServiceProxy);
+app.post('/login', fordServiceProxy);
 
 // Initialize Gemini SDK with telemetry header
 const apiKey = process.env.GEMINI_API_KEY;

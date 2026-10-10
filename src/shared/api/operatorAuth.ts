@@ -24,7 +24,7 @@ export async function readOperatorSession(): Promise<OperatorSession | null> {
 }
 
 export async function logoutOperator(): Promise<void> {
-  const csrf = await readBffCsrfToken();
+  const csrf = await readCsrfToken();
   const response = await fetch('/api/auth/logout', {
     method: 'POST',
     credentials: 'same-origin',
@@ -33,7 +33,7 @@ export async function logoutOperator(): Promise<void> {
   if (response.status !== 204) throw new Error(`Logout request failed (${response.status})`);
 }
 
-export async function readBffCsrfToken(): Promise<CsrfResponse> {
+export async function readCsrfToken(): Promise<CsrfResponse> {
   const response = await fetch('/api/auth/csrf', {
     credentials: 'same-origin',
     headers: { accept: 'application/json' },

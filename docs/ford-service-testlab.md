@@ -1,30 +1,52 @@
 # Ford-web ↔ Ford-service integration status
 
-Ford-service owns operator authentication and issues the OAuth/OIDC tokens. Ford-web acts as the browser-facing BFF: it stores tokens in Redis, exposes an HTTP-only session cookie, and forwards same-origin requests. Passkeys are the primary sign-in method; Spring Security one-time email tokens are the recovery path.
+Ford-service owns operator auth and token issuance. Spring Security handles
+passkeys, password login, and one-time email recovery. Browser identity lives
+in a Redis-backed Spring session; the browser receives only an opaque HttpOnly
+cookie. Validated bearer JWTs remain available for service clients.
 
-## Connected flows
+## Current application behavior
 
-- Login start and callback use authorization-code flow with PKCE and server-side login state.
-- The email recovery link first enters the same OAuth authorization flow as passkey sign-in, preserving Spring’s saved authorization request; Spring’s generated OTT page handles requesting and submitting the one-time link.
-- The BFF reads the operator profile from `/api/v1/operator/me`; the UI never trusts a browser-supplied role or bearer token.
-- CSRF-protected email recovery and logout relay requests to Spring Security. Logout invalidates the Spring session and the BFF session.
-- Test Lab sends structured multi-turn requests to `/api/v1/ai/respond`; its conversation ID is scoped in browser storage by operator identity.
-- Inbox reads tenant-scoped conversation/message pages from Ford-service and renders an explicit branch selector for operators with multiple tenant memberships.
-- Inbox replies, takeover, and handback use Ford-service commands; sends carry idempotency and conversation-version headers, while handback uses the active handoff ticket version.
-- Operator event streaming uses `/api/v1/operator/events/stream` through the same-origin BFF.
-- A Cloudflare Pages Function now routes only `/api/*`, `/oauth2/*`, `/.well-known/*`, `/login/*`, and `/webauthn/*` to the configured origin. It replaces forwarded-host headers, strips browser Authorization, and rewrites internal redirects to the public host.
+- Login uses same-origin Spring routes. Passkey success returns to the CRM; the
+  UI no longer starts the BFF OAuth callback flow.
+- `/api/auth/me`, `/api/auth/logout`, and `/api/auth/csrf` use Spring Security.
+- Unsafe browser requests include `X-XSRF-TOKEN`; bearer JWT requests remain
+  stateless and do not need a CSRF cookie.
+- Spring reloads active operator roles and tenant memberships from PostgreSQL
+  on each CRM API request, so an account disable or membership change takes
+  effect without waiting for a stale browser session to expire.
+- Inbox reads, messages, handoffs, and operator event streams use Ford-service.
+- Spring serves the UI through its reverse proxy to the static Pages app.
 
-## Important limits
+## Staged production migration
 
-- Other inbox mutations (lead fields, reassignment, local read markers, and simulated customer messages) still need backend wiring or removal from live mode before the CRM is production-ready.
-- Metrics, leads, inventory, finance, appointments, advisors, bot configuration, and actuator screens are not yet migrated as a complete UI flow. Do not treat their existing demo content or simulator actions as live backend data.
-- The Pages Function requires server-side `FORD_ORIGIN_URL` to point at a reverse proxy that routes `/api/**` to Ford-web BFF and Spring auth/OIDC paths to Ford-service. That binding and Tunnel route are not configured or verified here; passkey-origin behavior still needs a temporary-host end-to-end run.
-- No production DNS, Cloudflare Pages, Tunnel, or emme-1 deployment was changed as part of this work.
+The new Spring and UI code is not the same as a completed production cutover.
+The BFF container and `ford-origin.emme.business` route remain as rollback
+paths until the Pages function routes to Spring, the public host is switched to
+the Tunnel, and login/API/webhook checks pass. Existing `ford_session` users
+will need to sign in again when browser auth moves to the Spring `SESSION`
+cookie. Keep the OpenTelemetry Collector.
+
+For Pages preview, the function still forwards approved auth/API routes to its
+configured `FORD_ORIGIN_URL`. During rollout that origin must reach Spring
+directly; the final public UI uses `ford.emme.business` and does not depend on
+the BFF hostname. `/webhooks/meta/**` reaches Spring only after the public DNS
+cutover.
+
+## Current limits
+
+- Some CRM screens still contain demo data or simulator-only mutations; do not
+  present those as live backend capabilities.
+- Production Tunnel/DNS and Pages settings have not been cut over by this code
+  change. DNS requires Cloudflare Zone DNS Edit access.
+- No production deployment or external Cloudflare setting is claimed by this
+  document.
 
 ## Local setup
 
-Set the server-only BFF variables listed in `.env.example`, point `FORD_BFF_URL` at the BFF from the development UI server, and configure the Spring issuer, OAuth client, matching redirect URI, and allowed passkey origin for the chosen test host. The BFF needs Redis. Never place OAuth credentials, access tokens, signing keys, or the Resend API key in `VITE_*` variables.
-
-For Pages, bind `FORD_ORIGIN_URL` as a server-side Pages variable to the reverse proxy origin; do not set it to the public Pages hostname. Run `bun run pages:check` to compile the Function locally.
-
-The integration requires an actual operator identity and assigned tenant. `FORD_RESEND_API_KEY` is read from the server environment; set `RESEND_FROM` to a verified sender address too. A request for an unknown recovery email should keep the neutral accepted response; use a test identity and fake email sender for automated checks.
+Configure Ford-service's server-side database, Redis, auth signing key, passkey
+origin, and Resend variables. Set `FORD_WEB_UI_UPSTREAM_URL` to the static Pages
+deployment. Do not put credentials, signing keys, or Resend secrets in `VITE_*`
+variables. Run `npm run pages:check` to compile the Pages Function and
+`npm run api:check -- <Ford-service frontend-api.yaml path>` to verify the UI
+contract.

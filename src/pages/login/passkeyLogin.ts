@@ -1,4 +1,4 @@
-import { readBffCsrfToken } from '../../shared/api/operatorAuth';
+import { readCsrfToken } from '../../shared/api/operatorAuth';
 
 interface ServerCredentialDescriptor {
   id: string;
@@ -21,7 +21,7 @@ interface WebAuthnAuthenticationResponse {
 
 interface PasskeyLoginDependencies {
   fetcher?: typeof fetch;
-  csrfReader?: typeof readBffCsrfToken;
+  csrfReader?: typeof readCsrfToken;
   getCredential?: (options: PublicKeyCredentialRequestOptions) => Promise<PublicKeyCredential | null>;
   origin?: string;
 }
@@ -31,7 +31,7 @@ export async function authenticateWithPasskey(dependencies: PasskeyLoginDependen
   const getCredential = dependencies.getCredential
     ?? ((options) => navigator.credentials.get({ publicKey: options }) as Promise<PublicKeyCredential | null>);
   const origin = dependencies.origin ?? window.location.origin;
-  const csrf = await (dependencies.csrfReader ?? readBffCsrfToken)();
+  const csrf = await (dependencies.csrfReader ?? readCsrfToken)();
 
   const optionsResponse = await fetcher('/webauthn/authenticate/options', {
     method: 'POST',
@@ -81,7 +81,6 @@ export async function authenticateWithPasskey(dependencies: PasskeyLoginDependen
   if (!result.authenticated) throw new Error('La passkey no pudo verificar su identidad.');
   const destination = new URL(result.redirectUrl || '/', origin);
   if (destination.origin !== origin) throw new Error('Authentication returned an invalid redirect');
-  if (destination.pathname === '/') return '/api/auth/login';
   return `${destination.pathname}${destination.search}${destination.hash}`;
 }
 

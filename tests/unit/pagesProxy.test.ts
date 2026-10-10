@@ -13,6 +13,9 @@ describe('Pages same-origin proxy', () => {
     expect(shouldRedirectRootToLogin(new Request('https://crm.example/', {
       headers: { cookie: 'ford_session=opaque' },
     }))).toBe(false);
+    expect(shouldRedirectRootToLogin(new Request('https://crm.example/', {
+      headers: { cookie: 'SESSION=spring-opaque' },
+    }))).toBe(false);
     expect(shouldRedirectRootToLogin(new Request('https://crm.example/login'))).toBe(false);
   });
 

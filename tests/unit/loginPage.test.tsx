@@ -5,7 +5,7 @@ import { LoginPage } from '../../src/pages/login/ui/LoginPage';
 describe('operator login page', () => {
   it('uses passkey sign-in as primary and does not offer demo roles or passwords', () => {
     render(<LoginPage />);
-    expect(screen.getByRole('link', { name: /passkey|clave de acceso/i })).toHaveAttribute('href', '/api/auth/login');
+    expect(screen.getByRole('link', { name: /passkey|clave de acceso/i })).toHaveAttribute('href', '#passkey');
     expect(screen.queryByLabelText(/contraseña|password/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /propietario|gerente|asesor/i })).not.toBeInTheDocument();
   });

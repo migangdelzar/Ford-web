@@ -12,7 +12,7 @@ const operator = {
 describe('Ford-service operator auth API', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('reads the operator profile from the same-origin BFF session', async () => {
+  it('reads the operator profile from the same-origin Spring session', async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json(operator));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -20,12 +20,12 @@ describe('Ford-service operator auth API', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ credentials: 'same-origin' }));
   });
 
-  it('treats a missing BFF session as anonymous', async () => {
+  it('treats a missing Spring session as anonymous', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
     await expect(readOperatorSession()).resolves.toBeNull();
   });
 
-  it('logs out through the CSRF-protected BFF route', async () => {
+  it('logs out through the CSRF-protected Spring route', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({ token: 'csrf-value', headerName: 'X-XSRF-TOKEN' }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));

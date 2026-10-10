@@ -13,4 +13,4 @@ const contract = loadComposedContract(
   resolve(root, 'openapi.bff.yaml'),
 );
 writeWebContracts(contract, root);
-console.log(`Synced ${Object.keys(contract.paths).length} API paths from Ford-service and Ford-web BFF.`);
+console.log(`Synced ${Object.keys(contract.paths).length} API paths from Ford-service and transitional Ford-web routes.`);

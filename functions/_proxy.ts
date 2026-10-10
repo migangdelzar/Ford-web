@@ -69,7 +69,7 @@ export function shouldRedirectRootToLogin(request: Request): boolean {
   if (url.pathname !== '/' || !['GET', 'HEAD'].includes(request.method)) return false;
   return !request.headers.get('cookie')?.split(';').some((cookie) => {
     const [name, ...value] = cookie.trim().split('=');
-    return name === 'ford_session' && value.join('=').length > 0;
+    return (name === 'SESSION' || name === 'ford_session') && value.join('=').length > 0;
   });
 }
 
