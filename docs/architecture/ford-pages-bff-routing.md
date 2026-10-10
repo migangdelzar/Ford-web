@@ -48,7 +48,7 @@ The Spring UI proxy uses a fixed HTTPS Pages origin, forwards only selected repr
 
 ## DNS and Tunnel configuration
 
-`ford.emme.business` is a proxied CNAME to the existing Tunnel target. Tunnel ingress rules are ordered, with the BFF path before the Spring catch-all:
+`ford.emme.business` should be a proxied CNAME to the existing Tunnel target. Tunnel ingress rules are ordered, with the BFF path before the Spring catch-all:
 
 ```yaml
 ingress:
@@ -68,7 +68,7 @@ ingress:
   - service: http_status:404
 ```
 
-Keep `ford-origin.emme.business` available for rollback and diagnostic access during rollout. Once the new route is verified, remove `ford.emme.business` from the Pages custom-domain association; keep the Pages project and its `pages.dev` origin.
+Keep `ford-origin.emme.business` available for rollback and diagnostic access during rollout. The Tunnel rules are deployed and Spring origin smoke checks pass. Public DNS still points to `ford-crm-ui.pages.dev`; the available Cloudflare API token lacks DNS-record access, so DNS cutover remains pending. Once the new route is verified, remove `ford.emme.business` from the Pages custom-domain association; keep the Pages project and its `pages.dev` origin.
 
 DNS only resolves hostnames. Cloudflare Tunnel ingress routes requests by hostname/path, and Spring performs the server-side UI proxy. Cloudflare documents [Tunnel DNS routing](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/) and [ordered ingress rules](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/local-management/configuration-file/).
 
@@ -82,8 +82,8 @@ DNS only resolves hostnames. Cloudflare Tunnel ingress routes requests by hostna
 
 ## Cutover checklist
 
-- [ ] Deploy Spring proxy and verify `/login`, app route, asset, redirect rewrite, and Spring health through the diagnostic origin.
-- [ ] Put `/api/*` Tunnel rule before the hostname catch-all; verify BFF session, CSRF, OIDC, and WebAuthn flows.
+- [x] Deploy Spring proxy and verify `/login`, app route, assets, redirect rewrite, and Spring health through the diagnostic origin.
+- [x] Put `/api/*` Tunnel rule before the hostname catch-all; verify BFF CSRF endpoint and Spring auth routing through the diagnostic origin.
 - [ ] Change `ford.emme.business` DNS CNAME to the Tunnel and enable Cloudflare proxying.
 - [ ] Verify the public UI, API, OAuth redirects, and cookies remain on `ford.emme.business`.
 - [ ] Remove the Pages custom-domain association only after public checks pass; keep `ford-crm-ui.pages.dev` deployed.
