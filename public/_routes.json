@@ -1,10 +1,13 @@
 {
   "version": 1,
   "include": [
+    "/",
     "/api/*",
     "/oauth2/*",
     "/.well-known/*",
+    "/login",
     "/login/*",
+    "/webauthn",
     "/webauthn/*"
   ],
   "exclude": []

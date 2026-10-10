@@ -16,7 +16,7 @@ import { LegalModal, LegalTab } from './features/compliance/ui/LegalModal';
 import { useSseEvents } from './shared/lib/useSseEvents';
 import { OfflineIndicator } from './shared/lib/pwa';
 import { readOperatorSession } from './shared/api/operatorAuth';
-import { unauthenticatedRedirect } from './shared/lib/authRouting';
+import { authenticatedRedirect, unauthenticatedRedirect } from './shared/lib/authRouting';
 
 export function AppContent() {
   const store = useCrmStore();
@@ -51,8 +51,10 @@ export function AppContent() {
   }, [isAuthenticated, activeTenantId, fetchConversations]);
 
   useEffect(() => {
-    if (!authReady || isAuthenticated) return;
-    const redirectTo = unauthenticatedRedirect(window.location.pathname);
+    if (!authReady) return;
+    const redirectTo = isAuthenticated
+      ? authenticatedRedirect(window.location.pathname)
+      : unauthenticatedRedirect(window.location.pathname);
     if (redirectTo) window.location.replace(redirectTo);
   }, [authReady, isAuthenticated]);
 
@@ -116,7 +118,10 @@ export function AppContent() {
   }, [isAuthenticated, conversations, selectedConversationId, channelFilter, selectConversation]);
 
   // If not logged in, enforce the official Login Portal flow
-  if (!authReady || (!isAuthenticated && unauthenticatedRedirect(window.location.pathname))) {
+  const routeRedirect = isAuthenticated
+    ? authenticatedRedirect(window.location.pathname)
+    : unauthenticatedRedirect(window.location.pathname);
+  if (!authReady || routeRedirect) {
     return <div className="min-h-screen grid place-items-center text-sm text-slate-500">Verificando sesión…</div>;
   }
 

@@ -59,7 +59,10 @@ export function createBffApp({ auth, sessions, service, config }: CreateBffAppOp
       const profile = await profileResponse.json();
       if (!isOperatorProfile(profile)) return response.status(502).json({ error: 'invalid_operator_profile' });
       const sessionId = await sessions.createSession({ ...tokens, profile });
-      response.setHeader('Set-Cookie', cookie(config.sessionCookieName, sessionId, config.cookieSecure, true, '/api'));
+      response.setHeader('Set-Cookie', [
+        clearCookie(config.sessionCookieName, config.cookieSecure, true, '/api'),
+        cookie(config.sessionCookieName, sessionId, config.cookieSecure, true, '/'),
+      ]);
       return response.redirect(302, '/');
     } catch {
       return response.status(401).json({ error: 'authorization_failed' });
@@ -80,6 +83,10 @@ export function createBffApp({ auth, sessions, service, config }: CreateBffAppOp
   app.get('/api/auth/me', async (request, response) => {
     const current = await activeSession(request, response, config, sessions, auth);
     if (!current) return response.status(401).json({ error: 'session_unauthorized' });
+    response.setHeader('Set-Cookie', [
+      clearCookie(config.sessionCookieName, config.cookieSecure, true, '/api'),
+      cookie(config.sessionCookieName, current.id, config.cookieSecure, true, '/'),
+    ]);
     return response.status(200).json(current.session.profile);
   });
 
@@ -104,6 +111,7 @@ export function createBffApp({ auth, sessions, service, config }: CreateBffAppOp
     if (current) await sessions.deleteSession(current.id);
     const cookies = springLogout?.headers.getSetCookie?.() ?? [];
     response.setHeader('Set-Cookie', [...cookies,
+      clearCookie(config.sessionCookieName, config.cookieSecure, true, '/'),
       clearCookie(config.sessionCookieName, config.cookieSecure, true, '/api'),
     ]);
     if (!springLogout?.ok) return response.status(502).json({ error: 'spring_logout_unavailable' });
@@ -147,7 +155,10 @@ async function activeSession(
     return { id, session: refreshed };
   } catch {
     await sessions.deleteSession(id);
-    response.setHeader('Set-Cookie', clearCookie(config.sessionCookieName, config.cookieSecure, true, '/api'));
+    response.setHeader('Set-Cookie', [
+      clearCookie(config.sessionCookieName, config.cookieSecure, true, '/'),
+      clearCookie(config.sessionCookieName, config.cookieSecure, true, '/api'),
+    ]);
     return null;
   }
 }

@@ -136,6 +136,10 @@ describe('Ford-web BFF authentication', () => {
       expect(accepted.status).toBe(302);
       expect(accepted.headers.get('location')).toBe('/');
       expect(accepted.headers.get('set-cookie')).toContain('ford_session=opaque-1');
+      expect(accepted.headers.getSetCookie()).toEqual(expect.arrayContaining([
+        expect.stringContaining('Path=/;'),
+        expect.stringContaining('ford_session=; Path=/api; Max-Age=0'),
+      ]));
       expect(accepted.headers.get('set-cookie')).toContain('HttpOnly');
       expect(accepted.headers.get('set-cookie')).toContain('Secure');
       expect(await accepted.text()).not.toContain('access-token-private');
@@ -152,6 +156,10 @@ describe('Ford-web BFF authentication', () => {
       expect((await fetch(`${origin}/api/auth/me`)).status).toBe(401);
       const response = await fetch(`${origin}/api/auth/me`, { headers: { cookie: `ford_session=${sessionId}` } });
       expect(response.status).toBe(200);
+      expect(response.headers.getSetCookie()).toEqual(expect.arrayContaining([
+        expect.stringContaining('ford_session=; Path=/api; Max-Age=0'),
+        expect.stringContaining('ford_session=opaque-1; Path=/;'),
+      ]));
       expect(await response.json()).toEqual(operator);
       expect(response.headers.get('cache-control')).toContain('no-store');
     });
@@ -174,6 +182,7 @@ describe('Ford-web BFF authentication', () => {
       expect(accepted.status).toBe(204);
       expect(sessions.sessions.has(sessionId)).toBe(false);
       expect(accepted.headers.get('set-cookie')).toContain('ford_session=');
+      expect(accepted.headers.get('set-cookie')).toContain('Path=/;');
       expect(accepted.headers.get('set-cookie')).toContain('SESSION=;');
       expect(service.request).toHaveBeenCalledWith('/logout', '', expect.objectContaining({
         method: 'POST',
