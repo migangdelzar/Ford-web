@@ -2,98 +2,88 @@
 
 ## Decision
 
-Keep the UI in the `Ford-web` repository and Spring backend in `Ford-service`. Deploy the UI to Cloudflare Pages at `ford.emme.business`. Use a Pages Function as a same-origin reverse proxy for authentication and API requests. A second hostname, `ford-origin.emme.business`, points through Cloudflare Tunnel to the private backend entry point on emme-1.
+Keep React UI in `Ford-web` and Spring backend in `Ford-service`. Keep `ford.emme.business` as the browser origin, but route its DNS to the existing Cloudflare Tunnel. Spring serves the UI by reverse proxying safe page and asset requests to the independent Cloudflare Pages origin `ford-crm-ui.pages.dev`.
 
-This keeps browser requests on one origin, so the browser does not need cross-origin API access or CORS exceptions. DNS only resolves names; Pages Functions and Tunnel ingress perform the HTTP routing.
+The browser stays on one origin for UI, BFF API, and authentication. The repositories and deployments remain separate. DNS selects the Tunnel; ordered Tunnel ingress rules route API traffic to the BFF and all other traffic to Spring. Spring then fetches UI documents/assets from Pages server-to-server.
 
 ## Request flow
 
 ```mermaid
 flowchart LR
     U[Browser]
-    DNS[Cloudflare DNS]
-    P[Cloudflare Pages<br/>ford.emme.business]
-    A[Static CRM UI<br/>Ford-web repository]
-    F[Pages Function<br/>same-origin proxy]
-    O[ford-origin.emme.business]
-    T[Cloudflare Tunnel<br/>emme-business-oci]
-    BFF[Ford-web BFF<br/>emme-1 :3001]
-    S[Spring Security / API<br/>Ford-service :8080]
+    D[Cloudflare DNS and edge<br/>ford.emme.business]
+    T[Cloudflare Tunnel<br/>emme-1]
+    BFF[Ford-web BFF<br/>localhost:3001]
+    S[Spring MVC and Security<br/>localhost:8080]
+    P[Cloudflare Pages origin<br/>ford-crm-ui.pages.dev]
     R[(Redis<br/>emme-2)]
 
-    U -->|1. GET /, JS, CSS| DNS --> P --> A
-    U -->|2. /api/*, /login/*, /oauth2/*,<br/>/.well-known/*, /webauthn/*| DNS --> P --> F
-    F -->|server-side HTTPS| O --> T
-    T -->|/api/*| BFF
-    T -->|OAuth, login, OTP, passkeys| S
-    BFF -->|private Compose network| S
-    BFF -->|session / context state| R
-    S -->|API result| BFF --> T --> O --> F --> U
-    S -->|auth response / redirect| T --> O --> F --> U
+    U -->|UI GET/HEAD| D --> T --> S
+    S -->|server-side GET/HEAD; no browser cookies| P
+    P --> S --> T --> D --> U
+    U -->|/api/* with ford_session cookie| D --> T --> BFF
+    BFF -->|server-held access JWT| S
+    BFF --> R
+    S -->|OAuth, login POST, OTP, WebAuthn| T
 ```
 
-## Hostnames and path ownership
+## Path ownership
 
-| Public request | Cloudflare route | Destination | Purpose |
+| Browser request | Tunnel route | Handler | Notes |
 |---|---|---|---|
-| `https://ford.emme.business/` and static assets | Pages custom domain | Cloudflare Pages assets | CRM UI |
-| `https://ford.emme.business/api/*` | Pages Function → Tunnel path rule | BFF on emme-1:3001 | Session handling and application API via Ford-service |
-| `https://ford.emme.business/oauth2/*` | Pages Function → Tunnel path rule | Spring on emme-1:8080 | OAuth authorization server |
-| `https://ford.emme.business/.well-known/*` | Pages Function → Tunnel path rule | Spring on emme-1:8080 | OIDC discovery and metadata |
-| `https://ford.emme.business/login/*`, `/logout`, `/webauthn/*` | Pages Function → Tunnel path rule | Spring on emme-1:8080 | Passkey and OTP sign-in endpoints |
+| `GET/HEAD /`, `/login`, application routes, assets | Catch-all `ford.emme.business` → Spring `:8080` | Spring UI proxy → Pages `ford-crm-ui.pages.dev` | Streams Pages response under the public origin; rewrites Pages-origin redirects. |
+| `/api/*` | `ford.emme.business` → BFF `:3001` | Ford-web BFF | Browser `ford_session` cookie and CSRF header stay on this route. BFF keeps OAuth tokens server-side. |
+| `POST /login`, `/login/ott`, `/logout`, `/webauthn/*`, `/oauth2/*`, `/.well-known/*` | Catch-all `ford.emme.business` → Spring `:8080` | Spring Security / Authorization Server | These routes never go to the Pages UI proxy; UI proxy accepts only GET/HEAD. |
+| `/actuator/*`, `/webhooks/*` | Catch-all `ford.emme.business` → Spring `:8080` | Existing Spring handlers/security | Never proxied to Pages. |
 
-The path list must match the actual Ford-service security routes and the Pages Function implementation. Do not proxy a path just because it appears in a design; verify it exists in the deployed OpenAPI/security configuration.
+The Spring UI proxy uses a fixed HTTPS Pages origin, forwards only selected representation/cache headers, does not forward browser cookies or authorization credentials, and passes through relevant response security headers. API and authentication routes are excluded. Spring already uses framework forwarded-header support and the configured `FORD_PUBLIC_BASE_URL` for public OAuth URLs.
 
-## Authentication and browser session
+## Cookie and header behavior
 
-1. The browser loads the CRM from `ford.emme.business`.
-2. The UI calls relative URLs such as `/api/...`; it does not call the Tunnel hostname directly.
-3. Pages Function forwards API and auth-path requests server-side to `ford-origin.emme.business`.
-4. Tunnel sends `/api/*` to the BFF, and auth endpoints (`/oauth2/*`, `/.well-known/*`, `/login/*`, `/logout`, `/webauthn/*`) directly to Spring. Spring remains the authentication owner; the BFF stores the browser session and calls protected APIs with server-held tokens.
-5. The proxy must preserve required cookies and headers, and ensure redirects use the public `ford.emme.business` host. Internal origin URLs must not leak into browser redirects.
+- The browser's opaque `ford_session` cookie is sent to `ford.emme.business/api/*`; Tunnel routes that request directly to the BFF. The Spring-to-Pages request never receives that cookie.
+- BFF access and refresh tokens remain server-side in Redis. BFF-to-Spring API requests use bearer JWTs as before.
+- Cloudflare's public HTTPS request reaches Spring through Tunnel. Spring's `server.forward-headers-strategy=framework` handles trusted forwarded host/protocol metadata, and `FORD_PUBLIC_BASE_URL=https://ford.emme.business` remains the canonical issuer/callback origin.
+- A redirect from the Pages origin is rewritten to `ford.emme.business` before it reaches the browser. The browser does not navigate to `pages.dev` during the CRM flow.
+- The Pages `pages.dev` hostname remains available as the independent UI upstream and for preview/direct access.
 
-Whether access tokens stay entirely server-side depends on the implemented BFF/session contract. The proxy topology alone does not guarantee that; confirm cookie flags, token storage, CSRF protection, and refresh behavior in the actual code before production.
+## DNS and Tunnel configuration
 
-## DNS and Cloudflare responsibilities
-
-| Record | Target | Used by |
-|---|---|---|
-| `ford.emme.business` | `ford-crm-ui.pages.dev` | Browser-facing Pages UI and same-origin paths |
-| `ford-origin.emme.business` | Tunnel target `07b1cb41-6306-4b35-9331-5078a7c102d8.cfargotunnel.com` | Pages Function’s server-side upstream |
-
-Both records are managed in the `emme.business` Cloudflare zone. The origin Tunnel record is proxied. The Pages custom-domain record is currently DNS-only: proxying it caused a 522 while the Pages domain was still validating; DNS-only resolved it and the domain is now active. DNS by itself cannot route `/api` separately from `/`; Pages Functions send dynamic paths to the origin. Tunnel then splits those paths between the BFF and Spring listeners on emme-1.
-
-Expected Tunnel ingress shape (rules are evaluated top to bottom; keep the catch-all last):
+`ford.emme.business` is a proxied CNAME to the existing Tunnel target. Tunnel ingress rules are ordered, with the BFF path before the Spring catch-all:
 
 ```yaml
 ingress:
+  - hostname: ford.emme.business
+    path: ^/api(/.*)?$
+    service: http://localhost:3001
+  - hostname: ford.emme.business
+    service: http://localhost:8080
   - hostname: ford-origin.emme.business
-    path: ^/api/.*
+    path: ^/api(/.*)?$
     service: http://localhost:3001
   - hostname: ford-origin.emme.business
     path: ^/(oauth2|\.well-known|login|logout|webauthn)(/.*)?$
     service: http://localhost:8080
+  - hostname: ford-origin.emme.business
+    service: http://localhost:8080
   - service: http_status:404
 ```
 
-The BFF listens privately on emme-1 port `3001` and forwards approved application API requests to `ford-service:8080` over the private container network. Spring auth endpoints are reachable only through the Cloudflare Tunnel path rule; Spring itself is not exposed directly to the public Internet. Redis remains on its private network at emme-2. Cloudflare documents ordered ingress rules and regex path matching in its [Tunnel configuration reference](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/).
+Keep `ford-origin.emme.business` available for rollback and diagnostic access during rollout. Once the new route is verified, remove `ford.emme.business` from the Pages custom-domain association; keep the Pages project and its `pages.dev` origin.
+
+DNS only resolves hostnames. Cloudflare Tunnel ingress routes requests by hostname/path, and Spring performs the server-side UI proxy. Cloudflare documents [Tunnel DNS routing](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/) and [ordered ingress rules](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/local-management/configuration-file/).
 
 ## Deployment boundaries
 
-- **Ford-web repo:** React UI, Pages Function proxy, BFF source/image, OpenAPI client/UI integration.
-- **Ford-service repo:** Spring Security/authentication, API, persistence, deployment Compose/Ansible orchestration.
-- **Cloudflare Pages:** serves static UI and executes the edge proxy function.
-- **Cloudflare Tunnel:** connects the public origin hostname to private BFF and Spring listeners on emme-1, selected by request path.
-- **DNS:** maps hostnames only; it is not a reverse proxy or path router.
+- **Ford-web repo:** React UI, Pages assets, BFF source/image, OpenAPI client, and the still-independent Pages deployment.
+- **Ford-service repo:** Spring MVC UI proxy, Spring Security/authentication, APIs, and deployment configuration.
+- **Cloudflare Pages:** static UI upstream at `ford-crm-ui.pages.dev`.
+- **Cloudflare Tunnel:** public-to-private route for BFF and Spring on emme-1.
+- **DNS:** maps `ford.emme.business` to the Tunnel; it does not perform path routing.
 
-Repos and deployments stay separate. The shared browser origin is provided by Pages Functions, not by placing both codebases in one repository or container.
+## Cutover checklist
 
-## Deployment status
-
-- [x] `ford.emme.business` is attached to Pages and its custom domain is active.
-- [x] `ford-origin.emme.business` points to the existing Cloudflare Tunnel.
-- [x] Tunnel sends `/api/*` to BFF port `3001` and OAuth/login/OTP/passkey paths to Spring port `8080`.
-- [x] Pages Function has `FORD_ORIGIN_URL=https://ford-origin.emme.business`.
-- [x] Ford-service and BFF images deployed from GHCR to emme-1; both health checks pass.
-- [x] UI, API health, OIDC discovery, and BFF login redirect verified through `https://ford.emme.business`.
-- [ ] Complete an interactive browser sign-in, logout, and passkey/OTP test. During verification, Spring’s authorization endpoint returned 401 instead of redirecting to `/login`; a Spring Security fix is being prepared.
+- [ ] Deploy Spring proxy and verify `/login`, app route, asset, redirect rewrite, and Spring health through the diagnostic origin.
+- [ ] Put `/api/*` Tunnel rule before the hostname catch-all; verify BFF session, CSRF, OIDC, and WebAuthn flows.
+- [ ] Change `ford.emme.business` DNS CNAME to the Tunnel and enable Cloudflare proxying.
+- [ ] Verify the public UI, API, OAuth redirects, and cookies remain on `ford.emme.business`.
+- [ ] Remove the Pages custom-domain association only after public checks pass; keep `ford-crm-ui.pages.dev` deployed.
