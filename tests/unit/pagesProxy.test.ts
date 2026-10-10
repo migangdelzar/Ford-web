@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { proxyFordOriginRequest, shouldUseFordWebLogin } from '../../functions/_proxy';
+import { proxyFordOriginRequest, shouldRedirectRootToLogin, shouldUseFordWebLogin } from '../../functions/_proxy';
 
 describe('Pages same-origin proxy', () => {
   it('serves GET /login from the Ford-web app while keeping login API routes proxied', () => {
     expect(shouldUseFordWebLogin(new Request('https://crm.example/login'))).toBe(true);
     expect(shouldUseFordWebLogin(new Request('https://crm.example/login', { method: 'POST' }))).toBe(false);
     expect(shouldUseFordWebLogin(new Request('https://crm.example/login/ott?token=opaque'))).toBe(false);
+  });
+
+  it('sends root visitors without a BFF session cookie to the single login page', () => {
+    expect(shouldRedirectRootToLogin(new Request('https://crm.example/'))).toBe(true);
+    expect(shouldRedirectRootToLogin(new Request('https://crm.example/', {
+      headers: { cookie: 'ford_session=opaque' },
+    }))).toBe(false);
+    expect(shouldRedirectRootToLogin(new Request('https://crm.example/login'))).toBe(false);
   });
 
   it('forwards only approved routes and replaces spoofable forwarding headers', async () => {

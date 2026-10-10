@@ -64,6 +64,15 @@ export function shouldUseFordWebLogin(request: Request): boolean {
   return pathname === '/login' && (request.method === 'GET' || request.method === 'HEAD');
 }
 
+export function shouldRedirectRootToLogin(request: Request): boolean {
+  const url = new URL(request.url);
+  if (url.pathname !== '/' || !['GET', 'HEAD'].includes(request.method)) return false;
+  return !request.headers.get('cookie')?.split(';').some((cookie) => {
+    const [name, ...value] = cookie.trim().split('=');
+    return name === 'ford_session' && value.join('=').length > 0;
+  });
+}
+
 function isAllowedPath(pathname: string, method: string): boolean {
   if (pathname === '/login') return method === 'POST';
   return ALLOWED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
