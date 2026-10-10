@@ -64,12 +64,12 @@ export async function authenticateWithPasskey(dependencies: PasskeyLoginDependen
     body: JSON.stringify({
       id: credential.id,
       rawId: encodeBase64Url(credential.rawId),
-      type: credential.type,
+      credType: credential.type,
       response: {
         authenticatorData: encodeBase64Url(assertion.authenticatorData),
         clientDataJSON: encodeBase64Url(assertion.clientDataJSON),
         signature: encodeBase64Url(assertion.signature),
-        userHandle: assertion.userHandle ? encodeBase64Url(assertion.userHandle) : null,
+        ...(assertion.userHandle ? { userHandle: encodeBase64Url(assertion.userHandle) } : {}),
       },
       clientExtensionResults: credential.getClientExtensionResults(),
       authenticatorAttachment: credential.authenticatorAttachment,

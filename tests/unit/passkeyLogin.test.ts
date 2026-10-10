@@ -31,7 +31,8 @@ describe('Ford-web passkey login', () => {
     }));
     expect(JSON.parse(fetcher.mock.calls[1][1]?.body as string)).toMatchObject({
       rawId: 'AQID',
-      response: { authenticatorData: 'BAU', signature: 'CAk', userHandle: null },
+      credType: 'public-key',
+      response: { authenticatorData: 'BAU', signature: 'CAk' },
     });
   });
 
