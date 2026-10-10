@@ -2,5 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ford-crm-ui",
   "pages_build_output_dir": "./dist",
+  "vars": {
+    "FORD_ORIGIN_URL": "https://ford-origin.emme.business"
+  },
   "compatibility_date": "2026-10-09"
 }
