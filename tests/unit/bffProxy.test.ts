@@ -47,4 +47,17 @@ describe('same-origin BFF proxy', () => {
       expect(init.body).toBe(JSON.stringify({ messages: [{ role: 'user', content: 'Hi' }] }));
     });
   });
+
+  it('accepts the private compose-network BFF service origin', async () => {
+    const browserFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () => Response.json({ status: 'ok' }));
+    const app = express();
+    app.use(createBffProxy('http://ford-bff:3001', fetchMock));
+
+    await withServer(app, async (origin) => {
+      const response = await browserFetch(`${origin}/api/auth/me`);
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+  });
 });

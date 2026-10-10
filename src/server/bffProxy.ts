@@ -3,7 +3,9 @@ import type { RequestHandler } from 'express';
 
 export function createBffProxy(baseUrl: string, fetcher: typeof fetch = fetch): RequestHandler {
   const origin = new URL(baseUrl);
-  if (origin.protocol !== 'https:' && origin.hostname !== 'localhost' && origin.hostname !== '127.0.0.1') {
+  const privateComposeBff = origin.hostname === 'ford-bff';
+  if (origin.protocol !== 'https:' && origin.hostname !== 'localhost' && origin.hostname !== '127.0.0.1'
+    && !(origin.protocol === 'http:' && privateComposeBff)) {
     throw new Error('Ford BFF URL must use HTTPS outside local development');
   }
 

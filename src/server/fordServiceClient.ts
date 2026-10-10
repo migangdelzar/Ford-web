@@ -11,7 +11,9 @@ export class HttpFordServiceClient implements FordServiceClient {
 
   constructor(options: FordServiceClientOptions) {
     this.origin = new URL(options.baseUrl);
-    if (this.origin.protocol !== 'https:' && this.origin.hostname !== 'localhost' && this.origin.hostname !== '127.0.0.1') {
+    const privateComposeService = this.origin.hostname === 'ford-service';
+    if (this.origin.protocol !== 'https:' && this.origin.hostname !== 'localhost' && this.origin.hostname !== '127.0.0.1'
+      && !(this.origin.protocol === 'http:' && privateComposeService)) {
       throw new Error('Ford-service URL must use HTTPS outside local development');
     }
     this.timeoutMs = options.timeoutMs ?? 20_000;
