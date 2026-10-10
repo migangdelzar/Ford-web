@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Check,
@@ -10,11 +10,13 @@ import {
   Bell,
   BellRing,
   Send,
+  KeyRound,
 } from 'lucide-react';
 import { useCrmStore } from '../../../store/useCrmStore';
 import { useToast } from '../../../shared/ui/SonnerToast';
 import { DropdownPopover, Avatar, StatusDot, Button } from '../../../shared/ui';
 import { PWAInstallButton, useWebNotifications } from '../../../shared/lib/pwa';
+import { registerPasskey } from '../../../pages/login/passkeyRegistration';
 
 interface UserMenuPopoverProps {
   isOpen: boolean;
@@ -26,6 +28,7 @@ export const UserMenuPopover: React.FC<UserMenuPopoverProps> = ({ isOpen, onClos
   const { advisorProfile, setAdvisorStatus, resetAllData, userRole, logout, conversations } = useCrmStore();
   const { toast } = useToast();
   const { isSubscribed, togglePushSubscription, sendTestPush } = useWebNotifications();
+  const [registeringPasskey, setRegisteringPasskey] = useState(false);
 
   const totalNotifications = conversations.reduce(
     (acc, c) => acc + (c.unreadCount || 0) + (c.status === 'waiting' ? 1 : 0),
@@ -72,6 +75,21 @@ export const UserMenuPopover: React.FC<UserMenuPopoverProps> = ({ isOpen, onClos
     }
   };
 
+  const handleRegisterPasskey = async () => {
+    setRegisteringPasskey(true);
+    try {
+      await registerPasskey();
+      toast({ type: 'success', title: 'Passkey registrada en esta cuenta.' });
+    } catch (error) {
+      toast({
+        type: 'error',
+        title: error instanceof Error ? error.message : 'No se pudo registrar la passkey.',
+      });
+    } finally {
+      setRegisteringPasskey(false);
+    }
+  };
+
   return (
     <DropdownPopover isOpen={isOpen} onClose={onClose} width="w-80">
       <div className="divide-y divide-black/[0.06]">
@@ -104,6 +122,16 @@ export const UserMenuPopover: React.FC<UserMenuPopoverProps> = ({ isOpen, onClos
                 <Mail className="size-3 text-[#86868B] shrink-0" />
                 <span className="truncate text-[10.5px]">{advisorProfile.email}</span>
               </div>
+
+              <button
+                type="button"
+                onClick={() => void handleRegisterPasskey()}
+                disabled={registeringPasskey}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-semibold text-[#0071E3] hover:bg-[#E8F1FF] disabled:cursor-wait disabled:opacity-60"
+              >
+                <KeyRound className="size-3.5" />
+                {registeringPasskey ? 'Registrando…' : 'Registrar passkey'}
+              </button>
             </div>
           </div>
 
