@@ -131,3 +131,37 @@ describe('useCrmStore State & Logic', () => {
     expect(result.current.botConfig.handoffOnUnsure).toBe(false);
   });
 });
+
+it('keeps the selected conversation and refreshes its messages when the list reloads', async () => {
+  const conversation = (id: string, updatedAt: string) => ({
+    id, tenantId: 'tenant-1', channel: 'WHATSAPP', state: 'HUMAN_ACTIVE', version: 1,
+    participant: { providerId: `provider-${id}`, displayName: id }, updatedAt,
+  });
+  const page = { page: { pageSize: 50, hasNext: false } };
+  const messages = (conversationId: string) => ({
+    items: [{
+      id: `message-${conversationId}`, conversationId, direction: 'INBOUND', content: `text-${conversationId}`,
+      receivedAt: '2026-10-11T00:00:00Z',
+    }],
+    page: { pageSize: 100, hasNext: false },
+  });
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(Response.json({ ...page, items: [conversation('a', '2026-10-11T00:00:00Z'), conversation('b', '2026-10-10T00:00:00Z')] }))
+    .mockResolvedValueOnce(Response.json(messages('a')))
+    .mockResolvedValueOnce(Response.json(messages('b')))
+    .mockResolvedValueOnce(Response.json({ ...page, items: [conversation('a', '2026-10-11T00:01:00Z'), conversation('b', '2026-10-11T00:00:00Z')] }))
+    .mockResolvedValueOnce(Response.json(messages('b')));
+  vi.stubGlobal('fetch', fetchMock);
+
+  const { result } = renderHook(() => useCrmStore());
+  act(() => result.current.completeAuthCheck({
+    operatorId: 'operator-1', displayName: 'Operator', email: 'operator@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'],
+  }));
+  await act(async () => result.current.fetchConversations());
+  act(() => result.current.selectConversation('b'));
+  await act(async () => Promise.resolve());
+  await act(async () => result.current.fetchConversations());
+
+  expect(result.current.selectedConversationId).toBe('b');
+  expect(result.current.messages.map((message) => message.id)).toEqual(['message-b']);
+});

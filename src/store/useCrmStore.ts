@@ -140,6 +140,7 @@ export function logSystemEvent(
 
 // In-memory deduplication cache for Meta webhooks
 const processedWebhookIds = new Set<string>();
+let conversationRefreshGeneration = 0;
 
 function roleFromSession(roles: string[]): 'propietario' | 'gerente' | 'asesor' {
   if (roles.includes('ADMIN')) return 'propietario';
@@ -1036,6 +1037,7 @@ export function useCrmStore() {
     sendCustomerMessage,
     fetchConversations: useCallback(async () => {
       const tenantId = state.activeTenantId;
+      const generation = ++conversationRefreshGeneration;
       if (!state.isAuthenticated || !tenantId) {
         state.conversations = [];
         state.messages = [];
@@ -1046,21 +1048,28 @@ export function useCrmStore() {
       }
       try {
         const page = await listConversations(tenantId);
+        if (generation !== conversationRefreshGeneration || tenantId !== state.activeTenantId) return;
+        const previousSelectedId = state.selectedConversationId;
+        const selectedConversationId = page.items.some((item) => item.id === previousSelectedId)
+          ? previousSelectedId
+          : page.items[0]?.id ?? null;
         state.conversations = page.items.map(toUiConversation);
-        state.messages = [];
-        state.selectedConversationId = state.conversations[0]?.id ?? null;
+        if (selectedConversationId !== state.selectedConversationId) state.messages = [];
+        state.selectedConversationId = selectedConversationId;
         state.crmDataError = null;
         notify();
         if (state.selectedConversationId) {
           const conversationId = state.selectedConversationId;
           const messages = await listConversationMessages(tenantId, conversationId);
-          if (state.selectedConversationId === conversationId) {
+          if (generation === conversationRefreshGeneration && tenantId === state.activeTenantId
+            && state.selectedConversationId === conversationId) {
             const conversation = state.conversations.find((item) => item.id === conversationId);
             if (conversation) state.messages = messages.items.map((message) => toUiMessage(message, conversation.channel));
             notify();
           }
         }
       } catch (error) {
+        if (generation !== conversationRefreshGeneration || tenantId !== state.activeTenantId) return;
         state.crmDataError = error instanceof Error ? error.message : 'No se pudieron cargar las conversaciones';
         notify();
       }

@@ -20,7 +20,7 @@ export interface SseRealtimeEvent {
 }
 
 export function useSseEvents(enabled = false, tenantId: string | null = null) {
-  const store = useCrmStore();
+  const { fetchConversations } = useCrmStore();
 
   useEffect(() => {
     if (!enabled || !tenantId) return;
@@ -41,12 +41,12 @@ export function useSseEvents(enabled = false, tenantId: string | null = null) {
         } catch (e) {
           console.log('[SSE] Connected event received');
         }
+        void fetchConversations();
       });
 
       events.addEventListener('message.created', (event: MessageEvent) => {
         try {
           const realtimeEvent: SseRealtimeEvent = JSON.parse(event.data);
-          console.log('[SSE] New inbound message received:', realtimeEvent.data?.text);
           if (realtimeEvent.data?.text) {
             sendWebPushNotification(
               `Nuevo mensaje • ${realtimeEvent.data.channel || 'WhatsApp'}`,
@@ -59,9 +59,7 @@ export function useSseEvents(enabled = false, tenantId: string | null = null) {
         }
 
         // AggregateId is currently null in backend spec -> Refetch authoritative conversation list
-        if (store.fetchConversations) {
-          store.fetchConversations();
-        }
+        void fetchConversations();
       });
 
       events.onerror = () => {
@@ -76,5 +74,5 @@ export function useSseEvents(enabled = false, tenantId: string | null = null) {
         events.close();
       }
     };
-  }, [enabled, tenantId, store]);
+  }, [enabled, tenantId, fetchConversations]);
 }
