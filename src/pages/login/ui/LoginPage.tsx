@@ -63,6 +63,41 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onOpenLegalModal, authUnav
       setBusy(false);
     }
   };
+
+  const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    const formData = new FormData(event.currentTarget);
+    try {
+      if (!csrfToken) throw new Error('CSRF token is unavailable');
+      const response = await fetch('/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          accept: 'text/html',
+          'content-type': 'application/x-www-form-urlencoded',
+          'X-XSRF-TOKEN': csrfToken,
+        },
+        body: new URLSearchParams({
+          username: email,
+          password: String(formData.get('password') ?? ''),
+        }),
+      });
+      const destination = new URL(response.url || window.location.href, window.location.origin);
+      if (destination.origin !== window.location.origin) throw new Error('Invalid login redirect');
+      if (destination.pathname === '/login' && destination.searchParams.has('error')) {
+        setError('El correo o la contraseña no son válidos.');
+        return;
+      }
+      if (!response.ok) throw new Error('Login request failed');
+      window.location.assign(`${destination.pathname}${destination.search}${destination.hash}`);
+    } catch {
+      setError('No se pudo iniciar sesión. Revise sus datos e inténtelo de nuevo.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="min-h-screen w-full bg-[#F8F9FB] flex flex-col justify-between items-center px-4 py-8 select-none text-[#1C1E26] font-sans antialiased">
       <div className="w-full" />
@@ -123,13 +158,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onOpenLegalModal, authUnav
               {showPassword ? 'Ocultar acceso con contraseña' : 'Usar usuario y contraseña'}
             </button>
             {showPassword && (
-              <form action="/login" method="post" className="mt-3 space-y-3">
-                <input type="hidden" name="_csrf" value={csrfToken} />
+              <form onSubmit={handlePasswordSubmit} className="mt-3 space-y-3">
                 <label className="block text-xs font-medium" htmlFor="password-login-email">Correo electrónico</label>
                 <input id="password-login-email" name="username" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full rounded-xl border border-[#D9DDE5] px-3 py-2.5 text-sm" />
                 <label className="block text-xs font-medium" htmlFor="password-login-password">Contraseña</label>
                 <input id="password-login-password" name="password" type="password" autoComplete="current-password" required className="w-full rounded-xl border border-[#D9DDE5] px-3 py-2.5 text-sm" />
-                <button type="submit" disabled={!csrfToken || busy} className="w-full rounded-xl bg-[#1C1E26] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Iniciar con contraseña</button>
+                <button type="submit" disabled={!csrfToken || busy} className="w-full rounded-xl bg-[#1C1E26] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy ? 'Ingresando…' : 'Iniciar con contraseña'}</button>
               </form>
             )}
         </div>

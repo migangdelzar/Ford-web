@@ -38,16 +38,31 @@ describe('operator login page', () => {
     vi.unstubAllGlobals();
   });
 
-  it('offers the configured operator a CSRF-protected email and password form', async () => {
+  it('submits password login with the SPA CSRF header instead of a form token parameter', async () => {
     window.history.replaceState({}, '', '/login');
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }), { status: 200 })));
+    const failedLogin = { ok: false, status: 401, url: 'http://localhost/login' } as Response;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }), { status: 200 }))
+      .mockResolvedValueOnce(failedLogin);
+    vi.stubGlobal('fetch', fetchMock);
     render(<LoginPage />);
     fireEvent.click(screen.getByRole('button', { name: /usuario y contraseña/i }));
     await waitFor(() => expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument());
     expect(screen.getByLabelText(/correo electrónico/i)).toHaveValue('miky.delzar@gmail.com');
     expect(screen.getByLabelText(/contraseña/i)).toHaveAttribute('name', 'password');
-    expect(screen.getByDisplayValue('csrf-token')).toHaveAttribute('name', '_csrf');
     expect(screen.getByRole('button', { name: /iniciar con contraseña/i })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'test-password' } });
+    fireEvent.submit(screen.getByRole('button', { name: /iniciar con contraseña/i }).closest('form')!);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/login', expect.objectContaining({
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: expect.objectContaining({ 'X-XSRF-TOKEN': 'csrf-token' }),
+      body: new URLSearchParams({ username: 'miky.delzar@gmail.com', password: 'test-password' }),
+    }));
+    expect(fetchMock.mock.calls[1][1].body.toString()).not.toContain('_csrf');
+    expect(screen.queryByDisplayValue('csrf-token')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/no se pudo iniciar sesión/i));
     vi.unstubAllGlobals();
   });
 
