@@ -229,7 +229,9 @@ export function useCrmStore() {
         if (state.selectedConversationId !== id) return;
         const conversation = state.conversations.find((item) => item.id === id);
         if (!conversation) return;
-        state.messages = page.items.map((message) => toUiMessage(message, conversation.channel));
+        // The API returns newest-first for pagination; the chat timeline renders
+        // oldest-first and scrolls to the end to show the newest message.
+        state.messages = [...page.items].reverse().map((message) => toUiMessage(message, conversation.channel));
         state.crmDataError = null;
         notify();
       }).catch((error: unknown) => {
@@ -1064,7 +1066,11 @@ export function useCrmStore() {
           if (generation === conversationRefreshGeneration && tenantId === state.activeTenantId
             && state.selectedConversationId === conversationId) {
             const conversation = state.conversations.find((item) => item.id === conversationId);
-            if (conversation) state.messages = messages.items.map((message) => toUiMessage(message, conversation.channel));
+            if (conversation) {
+              // Keep timeline order chronological so scroll-to-bottom lands on the latest reply.
+              state.messages = [...messages.items].reverse()
+                .map((message) => toUiMessage(message, conversation.channel));
+            }
             notify();
           }
         }
