@@ -62,6 +62,10 @@ export function useSseEvents(enabled = false, tenantId: string | null = null) {
         void fetchConversations();
       });
 
+      events.addEventListener('conversation.updated', () => {
+        void fetchConversations();
+      });
+
       events.onerror = () => {
         console.warn('[SSE] EventSource connection retry in progress...');
       };
