@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SlidersHorizontal, Save, RotateCcw } from 'lucide-react';
 import { useCrmStore } from '../../../store/useCrmStore';
@@ -7,10 +7,11 @@ import { HandoffRulesSection } from '../../../features/bot-config/ui/HandoffRule
 import { PromptConfigSection } from '../../../features/bot-config/ui/PromptConfigSection';
 import { Button, ConfirmDialog, PageHeaderBlock, AtelierCard } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/SonnerToast';
+import { getConversationRuntimeSettings, updateConversationRuntimeSettings, type ConversationRuntimeSettingsSnapshot } from '../../../shared/api/operatorCrmApi';
 
 export const BotConfigWidget: React.FC = () => {
   const { t } = useTranslation();
-  const { botConfig, updateBotConfig, resetBotConfig } = useCrmStore();
+  const { botConfig, updateBotConfig, resetBotConfig, isAuthenticated, activeTenantId } = useCrmStore();
   const { toast } = useToast();
 
   const [mode, setMode] = useState(botConfig.mode);
@@ -19,6 +20,45 @@ export const BotConfigWidget: React.FC = () => {
   const [prompt, setPrompt] = useState(botConfig.systemPrompt);
   const [isSaving, setIsSaving] = useState(false);
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false);
+  const [runtimeSnapshot, setRuntimeSnapshot] = useState<ConversationRuntimeSettingsSnapshot | null>(null);
+  const [isRuntimeLoading, setIsRuntimeLoading] = useState(false);
+  const [isRuntimeSaving, setIsRuntimeSaving] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated || !activeTenantId) {
+      setRuntimeSnapshot(null);
+      return;
+    }
+    let active = true;
+    setIsRuntimeLoading(true);
+    getConversationRuntimeSettings(activeTenantId)
+      .then((snapshot) => { if (active) { setRuntimeSnapshot(snapshot); setRuntimeError(null); } })
+      .catch((error: unknown) => { if (active) setRuntimeError(error instanceof Error ? error.message : t('botConfig.runtimeLoadFailed')); })
+      .finally(() => { if (active) setIsRuntimeLoading(false); });
+    return () => { active = false; };
+  }, [activeTenantId, isAuthenticated, t]);
+
+  const saveRuntimeSettings = async () => {
+    if (!activeTenantId || !runtimeSnapshot) return;
+    setIsRuntimeSaving(true);
+    try {
+      const updated = await updateConversationRuntimeSettings(
+        activeTenantId, runtimeSnapshot.revision, runtimeSnapshot.settings,
+      );
+      setRuntimeSnapshot(updated);
+      setRuntimeError(null);
+      toast({ type: 'success', title: t('botConfig.runtimeSaved'), description: t('botConfig.runtimeSavedDescription') });
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : t('botConfig.runtimeSaveFailed'));
+      if (error instanceof Error && error.message.toLowerCase().includes('revision')) {
+        const current = await getConversationRuntimeSettings(activeTenantId).catch(() => null);
+        if (current) setRuntimeSnapshot(current);
+      }
+    } finally {
+      setIsRuntimeSaving(false);
+    }
+  };
 
   const handleSave = () => {
     setIsSaving(true);
@@ -93,6 +133,50 @@ export const BotConfigWidget: React.FC = () => {
               </>
             }
           />
+
+          {/* Card 1: Operating Mode */}
+          {isAuthenticated && (
+            <AtelierCard>
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">{t('botConfig.runtimeTitle')}</h3>
+                    <p className="text-xs text-slate-500 mt-1">{t('botConfig.runtimeDescription')}</p>
+                  </div>
+                  <Button variant="primary" size="sm" isLoading={isRuntimeSaving || isRuntimeLoading}
+                    disabled={!runtimeSnapshot || !activeTenantId} onClick={() => void saveRuntimeSettings()}>
+                    {t('botConfig.saveRuntime')}
+                  </Button>
+                </div>
+                {runtimeError && <p role="alert" className="text-xs text-rose-700">{runtimeError}</p>}
+                {runtimeSnapshot && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-xs">
+                      <span>{t('botConfig.handoffEnabled')}</span>
+                      <input type="checkbox" checked={runtimeSnapshot.settings.humanHandoffEnabled}
+                        onChange={(event) => setRuntimeSnapshot({ ...runtimeSnapshot,
+                          settings: { ...runtimeSnapshot.settings, humanHandoffEnabled: event.target.checked } })} />
+                    </label>
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-xs">
+                      <span>{t('botConfig.memoryEnabled')}</span>
+                      <input type="checkbox" checked={runtimeSnapshot.settings.memoryEnabled}
+                        onChange={(event) => setRuntimeSnapshot({ ...runtimeSnapshot,
+                          settings: { ...runtimeSnapshot.settings, memoryEnabled: event.target.checked } })} />
+                    </label>
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-xs sm:col-span-2">
+                      <span>{t('botConfig.contextMessages')}</span>
+                      <input type="number" min={1} max={50}
+                        className="w-20 rounded-lg border border-slate-200 px-2 py-1"
+                        value={runtimeSnapshot.settings.promptRecentMessageLimit}
+                        onChange={(event) => setRuntimeSnapshot({ ...runtimeSnapshot,
+                          settings: { ...runtimeSnapshot.settings, promptRecentMessageLimit: Number(event.target.value) } })} />
+                    </label>
+                  </div>
+                )}
+                {runtimeSnapshot && <p className="text-[10px] text-slate-400">{t('botConfig.runtimeRevision', { revision: runtimeSnapshot.revision })}</p>}
+              </div>
+            </AtelierCard>
+          )}
 
           {/* Card 1: Operating Mode */}
           <AtelierCard>

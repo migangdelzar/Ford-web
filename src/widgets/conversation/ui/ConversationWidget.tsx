@@ -8,6 +8,8 @@ import { MessageBubble } from '../../../entities/message/ui/MessageBubble';
 import { ConversationHeader } from '../../../entities/conversation/ui/ConversationHeader';
 import { OmniComposer } from '../../../features/composer/ui/OmniComposer';
 import { useToast } from '../../../shared/ui/SonnerToast';
+import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog';
+import { restartConversationContext } from '../../../shared/api/operatorCrmApi';
 
 const getDateLabel = (isoDate: string, t: (k: string) => string, lang: string) => {
   const date = new Date(isoDate);
@@ -50,6 +52,9 @@ export const ConversationWidget: React.FC = () => {
     selectConversation,
     toggleInspector,
     isInspectorOpen,
+    activeTenantId,
+    isAuthenticated,
+    fetchConversations,
   } = useCrmStore();
   const { toast } = useToast();
   const scrollBottomRef = useRef<HTMLDivElement>(null);
@@ -57,9 +62,34 @@ export const ConversationWidget: React.FC = () => {
   // Touch Gesture tracking for mobile back navigation & drawer swipe
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const [swipeBackProgress, setSwipeBackProgress] = useState(0);
+  const [isRestartConfirmOpen, setIsRestartConfirmOpen] = useState(false);
+  const [isRestartingMemory, setIsRestartingMemory] = useState(false);
 
   const currentConv = conversations.find((c: any) => c.id === selectedConversationId);
   const convMessages = messages.filter((m: any) => m.conversationId === selectedConversationId);
+
+  const restartMemory = async () => {
+    if (!currentConv || !activeTenantId || currentConv.version === undefined || !isAuthenticated) {
+      toast({ type: 'error', title: t('conversation.restartFailed'), description: t('conversation.restartNeedsAuth') });
+      setIsRestartConfirmOpen(false);
+      return;
+    }
+    setIsRestartingMemory(true);
+    try {
+      await restartConversationContext(activeTenantId, currentConv.id, currentConv.version);
+      await fetchConversations();
+      setIsRestartConfirmOpen(false);
+      toast({ type: 'success', title: t('conversation.restartSuccess'), description: t('conversation.transcriptPreserved') });
+    } catch (error) {
+      toast({
+        type: 'error',
+        title: t('conversation.restartFailed'),
+        description: error instanceof Error ? error.message : t('conversation.restartRetry'),
+      });
+    } finally {
+      setIsRestartingMemory(false);
+    }
+  };
 
   useEffect(() => {
     scrollBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -188,6 +218,9 @@ export const ConversationWidget: React.FC = () => {
         onBackClick={() => selectConversation(null)}
         onToggleTakeover={() => toggleTakeover(currentConv.id)}
         onSetTakeover={(mode) => setTakeover(currentConv.id, mode)}
+        onRestartMemory={isAuthenticated && activeTenantId && currentConv.version !== undefined
+          ? () => setIsRestartConfirmOpen(true) : undefined}
+        isRestartingMemory={isRestartingMemory}
         onToggleInspector={toggleInspector}
         onReopenWindow={() => {
           reopen24HourWindow(currentConv.id);
@@ -205,6 +238,18 @@ export const ConversationWidget: React.FC = () => {
             description: t('composer.templatesTitle'),
           });
         }}
+      />
+
+      <ConfirmDialog
+        isOpen={isRestartConfirmOpen}
+        title={t('conversation.restartBotContext')}
+        description={t('conversation.restartConfirmDescription')}
+        confirmLabel={t('conversation.restartConfirm')}
+        cancelLabel={t('common.cancel')}
+        variant="warning"
+        isLoading={isRestartingMemory}
+        onConfirm={() => void restartMemory()}
+        onClose={() => setIsRestartConfirmOpen(false)}
       />
 
       {/* Messages Timeline with Date Grouping */}

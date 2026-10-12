@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { listConversations, listConversationMessages, listOpenHandoffs, setConversationTakeover, setConversationHandback, sendConversationMessage } from '../../src/shared/api/operatorCrmApi';
+import { listConversations, listConversationMessages, listOpenHandoffs, setConversationTakeover, setConversationHandback, sendConversationMessage, restartConversationContext, getConversationRuntimeSettings, updateConversationRuntimeSettings } from '../../src/shared/api/operatorCrmApi';
 
 describe('operator CRM API', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -37,6 +37,43 @@ describe('operator CRM API', () => {
     expect(request[0]).toBe('/api/v1/conversations/conversation-1/messages?tenantId=tenant-1');
     expect(request[1]?.headers).toMatchObject({ 'X-XSRF-TOKEN': 'csrf', 'if-match': '"v7"' });
     expect(request[1]?.headers).toHaveProperty('idempotency-key');
+  });
+
+  it('restarts bot context with CSRF, idempotency, and the current conversation version', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
+      .mockResolvedValueOnce(Response.json({ conversationId: 'conversation-1', conversationVersion: 8, contextStartedAt: '2026-10-12T10:00:00Z' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(restartConversationContext('tenant-1', 'conversation-1', 7))
+      .resolves.toMatchObject({ conversationVersion: 8 });
+    const [url, request] = fetchMock.mock.calls[1];
+    expect(url).toBe('/api/v1/conversations/conversation-1/restart?tenantId=tenant-1');
+    expect(request?.method).toBe('POST');
+    expect(request?.headers).toMatchObject({ 'X-XSRF-TOKEN': 'csrf', 'if-match': '"v7"' });
+    expect(request?.headers).toHaveProperty('idempotency-key');
+  });
+
+  it('reads tenant runtime settings from the backend', async () => {
+    const settings = { tenantId: 'tenant-1', revision: 2, settings: { humanHandoffEnabled: true, memoryEnabled: true, promptRecentMessageLimit: 12 }, updatedAt: null, updatedBy: null };
+    const fetchMock = vi.fn(async () => Response.json(settings));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(getConversationRuntimeSettings('tenant-1')).resolves.toMatchObject({ revision: 2 });
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/conversations/runtime-settings?tenantId=tenant-1', {
+      credentials: 'same-origin', headers: { accept: 'application/json' },
+    });
+  });
+
+  it('updates tenant runtime settings with CSRF and optimistic revision', async () => {
+    const settings = { tenantId: 'tenant-1', revision: 3, settings: { humanHandoffEnabled: true, memoryEnabled: false, promptRecentMessageLimit: 10 }, updatedAt: '2026-10-12T10:00:00Z', updatedBy: 'operator' };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
+      .mockResolvedValueOnce(Response.json(settings));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(updateConversationRuntimeSettings('tenant-1', 2, settings.settings)).resolves.toMatchObject({ revision: 3 });
+    const [url, request] = fetchMock.mock.calls[1];
+    expect(url).toBe('/api/v1/conversations/runtime-settings?tenantId=tenant-1');
+    expect(request?.headers).toMatchObject({ 'X-XSRF-TOKEN': 'csrf', 'if-match': '"v2"' });
+    expect(JSON.parse(String(request?.body))).toEqual(settings.settings);
   });
 
   it('lists open handoffs and uses the backend query contract for takeover and handback', async () => {

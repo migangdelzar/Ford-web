@@ -9,6 +9,7 @@ import {
   Flame,
   Sun,
   Snowflake,
+  RotateCcw,
 } from 'lucide-react';
 import { Conversation } from '../../../types';
 import { ChannelAvatar } from './ChannelAvatar';
@@ -26,6 +27,8 @@ interface ConversationHeaderProps {
   onToggleInspector: () => void;
   onReopenWindow: () => void;
   onSimulateExpire: () => void;
+  onRestartMemory?: () => void;
+  isRestartingMemory?: boolean;
 }
 
 export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
@@ -37,6 +40,8 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
   onToggleInspector,
   onReopenWindow,
   onSimulateExpire,
+  onRestartMemory,
+  isRestartingMemory = false,
 }) => {
   const { t } = useTranslation();
   const attribution = Authority.getLeadAttribution(conversation);
@@ -104,6 +109,20 @@ export const ConversationHeader: React.FC<ConversationHeaderProps> = ({
 
         {/* Right Controls: Unified across mobile & desktop */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {conversation.status === 'bot' && onRestartMemory && (
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              type="button"
+              onClick={onRestartMemory}
+              disabled={isRestartingMemory}
+              title={t('conversation.restartBotContext')}
+              aria-label={t('conversation.restartBotContext')}
+              className="inline-flex items-center justify-center gap-1.5 h-8 px-2 rounded-xl text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-50 disabled:cursor-wait"
+            >
+              <RotateCcw className="size-3.5" />
+              <span className="hidden xl:inline">{t('conversation.restartContext')}</span>
+            </motion.button>
+          )}
           <BotControlSwitch
             id="conversation-header"
             status={conversation.status}

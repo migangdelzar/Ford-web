@@ -113,6 +113,89 @@ export async function sendConversationMessage(
   return body as { messageId: string; conversationVersion: number; acceptedAt: string };
 }
 
+export interface ConversationMemoryRestartReceipt {
+  conversationId: string;
+  conversationVersion: number;
+  contextStartedAt: string;
+}
+
+export interface ConversationRuntimeSettings {
+  humanHandoffEnabled: boolean;
+  memoryEnabled: boolean;
+  promptRecentMessageLimit: number;
+}
+
+export interface ConversationRuntimeSettingsSnapshot {
+  tenantId: string;
+  revision: number;
+  settings: ConversationRuntimeSettings;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+export async function getConversationRuntimeSettings(tenantId: string): Promise<ConversationRuntimeSettingsSnapshot> {
+  const query = new URLSearchParams({ tenantId });
+  const response = await fetch(`/api/v1/conversations/runtime-settings?${query}`, {
+    credentials: 'same-origin', headers: { accept: 'application/json' },
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(errorMessage(body, response.status));
+  if (!isRuntimeSettingsSnapshot(body)) throw new Error('Ford-service returned invalid runtime settings');
+  return body;
+}
+
+export async function updateConversationRuntimeSettings(
+  tenantId: string,
+  revision: number,
+  settings: ConversationRuntimeSettings,
+): Promise<ConversationRuntimeSettingsSnapshot> {
+  const csrf = await readCsrfToken();
+  const query = new URLSearchParams({ tenantId });
+  const response = await fetch(`/api/v1/conversations/runtime-settings?${query}`, {
+    method: 'PUT',
+    credentials: 'same-origin',
+    headers: {
+      accept: 'application/json', 'content-type': 'application/json',
+      'if-match': `"v${revision}"`, [csrf.headerName]: csrf.token,
+    },
+    body: JSON.stringify(settings),
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(errorMessage(body, response.status));
+  if (!isRuntimeSettingsSnapshot(body)) throw new Error('Ford-service returned invalid runtime settings');
+  return body;
+}
+
+export async function restartConversationContext(
+  tenantId: string,
+  conversationId: string,
+  version: number,
+): Promise<ConversationMemoryRestartReceipt> {
+  const csrf = await readCsrfToken();
+  const query = new URLSearchParams({ tenantId });
+  const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}/restart?${query}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'idempotency-key': crypto.randomUUID(),
+      'if-match': `"v${version}"`,
+      [csrf.headerName]: csrf.token,
+    },
+    body: '{}',
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(errorMessage(body, response.status));
+  if (!body || typeof body !== 'object'
+    || typeof (body as { conversationId?: unknown }).conversationId !== 'string'
+    || typeof (body as { conversationVersion?: unknown }).conversationVersion !== 'number'
+    || typeof (body as { contextStartedAt?: unknown }).contextStartedAt !== 'string') {
+    throw new Error('Ford-service returned an invalid memory restart receipt');
+  }
+  return body as ConversationMemoryRestartReceipt;
+}
+
 async function getPage<T>(url: string): Promise<Page<T>> {
   const response = await fetch(url, { credentials: 'same-origin', headers: { accept: 'application/json' } });
   const body: unknown = await response.json().catch(() => null);
@@ -151,6 +234,17 @@ function isPage(value: unknown): value is Page<unknown> {
   return Array.isArray(page.items)
     && typeof page.page?.pageSize === 'number'
     && typeof page.page?.hasNext === 'boolean';
+}
+
+function isRuntimeSettingsSnapshot(value: unknown): value is ConversationRuntimeSettingsSnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const snapshot = value as Partial<ConversationRuntimeSettingsSnapshot>;
+  const settings = snapshot.settings;
+  return typeof snapshot.tenantId === 'string'
+    && typeof snapshot.revision === 'number'
+    && !!settings && typeof settings.humanHandoffEnabled === 'boolean'
+    && typeof settings.memoryEnabled === 'boolean'
+    && typeof settings.promptRecentMessageLimit === 'number';
 }
 
 function errorMessage(value: unknown, status: number): string {

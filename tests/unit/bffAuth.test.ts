@@ -243,6 +243,41 @@ describe('Ford-web BFF authentication', () => {
     });
   });
 
+  it('forwards approved conversation restart and runtime settings routes with operator access token', async () => {
+    const { app, sessions, service } = fixture();
+    const sessionId = await sessions.createSession({
+      accessToken: 'private-access', refreshToken: 'private-refresh', expiresAt: Date.now() + 60_000, profile: operator,
+    });
+    const conversationId = '9a1e2cd0-2df2-4eeb-a9c0-327f8a3de422';
+    await withServer(app, async (origin) => {
+      const restart = await fetch(`${origin}/api/v1/conversations/${conversationId}/restart?tenantId=${operator.tenantIds[0]}`, {
+        method: 'POST',
+        headers: {
+          cookie: `ford_session=${sessionId}; XSRF-TOKEN=csrf-value`,
+          'x-xsrf-token': 'csrf-value',
+          'if-match': '"v7"',
+          'idempotency-key': 'restart-1',
+          'content-type': 'application/json',
+        },
+        body: '{}',
+      });
+      expect(restart.status).toBe(200);
+      expect(service.request).toHaveBeenCalledWith(
+        `/api/v1/conversations/${conversationId}/restart?tenantId=${operator.tenantIds[0]}`,
+        'private-access', expect.objectContaining({ method: 'POST' }),
+      );
+
+      const settings = await fetch(`${origin}/api/v1/conversations/runtime-settings?tenantId=${operator.tenantIds[0]}`, {
+        headers: { cookie: `ford_session=${sessionId}` },
+      });
+      expect(settings.status).toBe(200);
+      expect(service.request).toHaveBeenCalledWith(
+        `/api/v1/conversations/runtime-settings?tenantId=${operator.tenantIds[0]}`,
+        'private-access', expect.objectContaining({ method: 'GET' }),
+      );
+    });
+  });
+
   it('streams operator events through the authenticated same-origin BFF session', async () => {
     const { app, sessions, service } = fixture();
     const sessionId = await sessions.createSession({
