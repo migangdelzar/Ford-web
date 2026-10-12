@@ -48,6 +48,7 @@ export interface Message {
   conversationId: string;
   channel: Channel;
   sender: MessageSender;
+  senderName?: string;
   content: string;
   timestamp: string; // ISO string
   status: DeliveryStatus;

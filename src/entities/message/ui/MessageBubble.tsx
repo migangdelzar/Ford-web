@@ -262,7 +262,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         {/* Header: Human Advisor */}
         <div className="text-[11px] text-[#0052B4] font-semibold mb-1 flex items-center gap-1.5">
           <User className="w-3.5 h-3.5 text-[#007AFF] shrink-0" />
-          <span>{t('conversation.advisorTitle', 'Asesor')}</span>
+          <span>{message.senderName || t('conversation.advisorTitle', 'Asesor')}</span>
         </div>
 
         <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-normal text-slate-900">

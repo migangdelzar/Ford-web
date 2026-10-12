@@ -2110,6 +2110,7 @@ components:
         - id
         - conversationId
         - direction
+        - senderType
         - content
         - receivedAt
       properties:
@@ -2124,6 +2125,13 @@ components:
           nullable: true
         direction:
           $ref: "#/components/schemas/MessageDirection"
+        senderType:
+          type: string
+          enum:
+            - CUSTOMER
+            - BOT
+            - ADVISOR
+            - SYSTEM
         content:
           type: string
         deliveryStatus:

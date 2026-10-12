@@ -16,7 +16,10 @@ export interface ConversationRecord {
 export interface ConversationMessageRecord {
   id: string;
   conversationId: string;
+  providerMessageId?: string | null;
   direction: 'INBOUND' | 'OUTBOUND';
+  senderType?: 'CUSTOMER' | 'BOT' | 'ADVISOR' | 'SYSTEM';
+  sender?: { providerId: string | null; displayName?: string | null; phone?: string | null } | null;
   content: string;
   deliveryStatus?: 'QUEUED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null;
   receivedAt: string;

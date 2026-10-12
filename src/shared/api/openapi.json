@@ -3409,6 +3409,7 @@
           "id",
           "conversationId",
           "direction",
+          "senderType",
           "content",
           "receivedAt"
         ],
@@ -3427,6 +3428,15 @@
           },
           "direction": {
             "$ref": "#/components/schemas/MessageDirection"
+          },
+          "senderType": {
+            "type": "string",
+            "enum": [
+              "CUSTOMER",
+              "BOT",
+              "ADVISOR",
+              "SYSTEM"
+            ]
           },
           "content": {
             "type": "string"

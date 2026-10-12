@@ -184,11 +184,18 @@ function toUiMessage(record: ConversationMessageRecord, channel: Channel): Messa
     : record.deliveryStatus === 'READ' ? 'read'
       : record.deliveryStatus === 'DELIVERED' ? 'delivered'
         : record.deliveryStatus === 'SENT' ? 'sent' : 'sending';
+  const sender = record.senderType === 'CUSTOMER' ? 'customer'
+    : record.senderType === 'BOT' ? 'bot'
+      : record.senderType === 'ADVISOR' ? 'human'
+        : record.senderType === 'SYSTEM' ? 'system'
+          : record.direction === 'INBOUND' ? 'customer'
+            : record.providerMessageId?.startsWith('operator:') ? 'human' : 'bot';
   return {
     id: record.id,
     conversationId: record.conversationId,
     channel,
-    sender: record.direction === 'INBOUND' ? 'customer' : 'human',
+    sender,
+    senderName: record.sender?.displayName ?? undefined,
     content: record.content,
     timestamp: record.sentAt ?? record.receivedAt,
     status,

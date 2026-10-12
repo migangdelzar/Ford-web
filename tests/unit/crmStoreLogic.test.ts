@@ -70,6 +70,33 @@ describe('useCrmStore State & Logic', () => {
     expect(conv?.status).toBe('bot');
   });
 
+  it('identifies bot and advisor messages from the API sender type', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(Response.json({
+        items: [{
+          id: 'conversation-1', tenantId: 'tenant-1', channel: 'WHATSAPP', state: 'HUMAN_ACTIVE', version: 1,
+          participant: { providerId: 'customer-1' }, updatedAt: '2026-10-12T00:00:00Z',
+        }],
+        page: { pageSize: 50, hasNext: false },
+      }))
+      .mockResolvedValueOnce(Response.json({
+        items: [
+          { id: 'bot-1', conversationId: 'conversation-1', direction: 'OUTBOUND', senderType: 'BOT', content: 'Respuesta del bot', receivedAt: '2026-10-12T00:00:01Z' },
+          { id: 'advisor-1', conversationId: 'conversation-1', direction: 'OUTBOUND', senderType: 'ADVISOR', sender: { providerId: 'operator-1', displayName: 'Ana asesora' }, content: 'Respuesta de Ana', receivedAt: '2026-10-12T00:00:02Z' },
+        ],
+        page: { pageSize: 100, hasNext: false },
+      })));
+    const { result } = renderHook(() => useCrmStore());
+
+    await act(async () => result.current.fetchConversations());
+    act(() => result.current.selectConversation('conversation-1'));
+    await act(async () => Promise.resolve());
+
+    expect(result.current.messages.map(({ sender, senderName }) => [sender, senderName])).toEqual([
+      ['human', 'Ana asesora'], ['bot', undefined],
+    ]);
+  });
+
   it('manages 24-hour Meta window fast forward and reopen', () => {
     const { result } = renderHook(() => useCrmStore());
     const convId = result.current.conversations[0].id;
