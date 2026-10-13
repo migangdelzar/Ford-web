@@ -43,6 +43,10 @@ jobs:
         run: |
           set -euo pipefail
           operation="${INPUT_OPERATION:-deploy}"
+          if [[ "$operation" != "deploy" && "$operation" != "rollback" ]]; then
+            echo "operation must be deploy or rollback" >&2
+            exit 1
+          fi
           if [[ "$EVENT_NAME" == "push" ]]; then
             sha="$EVENT_SHA"
           else
@@ -90,7 +94,7 @@ jobs:
 
   deploy:
     needs: verify
-    if: ${{ vars.PRODUCTION_DEPLOY_ENABLED == 'true' }}
+    if: ${{ github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -125,16 +129,46 @@ jobs:
           OPERATION: ${{ needs.verify.outputs.operation }}
         run: |
           set -euo pipefail
+          if [[ "$OPERATION" == "rollback" ]]; then
+            prior_deployments="$(mktemp)"
+            bunx wrangler pages deployment list \
+              --project-name ford-crm-ui \
+              --environment production \
+              --json > "$prior_deployments"
+            prior_count="$(jq --arg sha "${SOURCE_SHA:0:7}" \
+              '[.[] | select(.Source == $sha and .Environment == "Production" and .Status == "Success")] | length' \
+              "$prior_deployments")"
+            rm -f "$prior_deployments"
+            if [[ "$prior_count" == "0" ]]; then
+              echo "rollback source has no successful prior production Pages deployment: $SOURCE_SHA" >&2
+              exit 1
+            fi
+          fi
           bunx wrangler pages deploy dist \
             --project-name ford-crm-ui \
             --branch main \
             --commit-hash "$SOURCE_SHA" \
             --commit-message "$OPERATION $SOURCE_SHA"
+          deployment_json="$(mktemp)"
+          bunx wrangler pages deployment list \
+            --project-name ford-crm-ui \
+            --environment production \
+            --json > "$deployment_json"
+          deployment="$(jq -cer --arg sha "${SOURCE_SHA:0:7}" \
+            '[.[] | select(.Source == $sha and .Environment == "Production" and .Status == "Success")][0] | {id: .Id, url: .Deployment, details: .Build}' \
+            "$deployment_json")"
+          rm -f "$deployment_json"
+          deployment_id="$(jq -r '.id' <<< "$deployment")"
+          deployment_url="$(jq -r '.url' <<< "$deployment")"
+          deployment_details="$(jq -r '.details' <<< "$deployment")"
           {
             echo "### Ford Web deployment"
             echo "- Operation: $OPERATION"
-            echo "- Source commit: `$SOURCE_SHA`"
-            echo "- Project: `ford-crm-ui`"
+            echo "- Source commit: $SOURCE_SHA"
+            echo "- Project: ford-crm-ui"
+            echo "- Deployment ID: $deployment_id"
+            echo "- Deployment URL: $deployment_url"
+            echo "- Deployment details: $deployment_details"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke check public deployment
@@ -147,3 +181,5 @@ jobs:
             exit 1
           fi
           curl --fail --silent --show-error --retry 8 --retry-delay 5 "$SMOKE_URL" -o /dev/null
+          curl --fail --silent --show-error --retry 8 --retry-delay 5 \
+            "${SMOKE_URL%/}/api/v1/health" -o /dev/null

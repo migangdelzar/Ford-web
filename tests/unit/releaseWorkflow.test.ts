@@ -19,7 +19,7 @@ describe('Ford-web release workflow contract', () => {
     expect(commands).toContain('bun run lint');
     expect(commands).toContain('bun run test');
     expect(commands).toContain('bun run build');
-    expect(commands).toContain('bun run api:check');
+    expect(commands).toContain('bun run api:check -- openapi.ford-service.yaml');
     expect(commands).toContain('bun run pages:check');
     expect(commands).not.toMatch(/wrangler pages deploy/);
   });
@@ -32,8 +32,13 @@ describe('Ford-web release workflow contract', () => {
     const commands = deploy.steps.map(step => step.run ?? '').join('\n');
 
     expect(deploy.environment).toBe('production');
+    expect(deploy.if).toContain("github.ref == 'refs/heads/main'");
     expect(deploy.if).toContain("vars.PRODUCTION_DEPLOY_ENABLED == 'true'");
     expect(commands).toContain('wrangler pages deploy');
-    expect(commands).toContain('bun run api:check');
+    expect(commands).toContain('wrangler pages deployment list');
+    expect(commands).toContain('no successful prior production Pages deployment');
+    expect(commands).toContain('Deployment ID: $deployment_id');
+    expect(commands).toContain('bun run api:check -- openapi.ford-service.yaml');
+    expect(commands).toContain('/api/v1/health');
   });
 });
