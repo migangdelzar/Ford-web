@@ -85,47 +85,14 @@ describe('Ford-web release workflow contract', () => {
     expect(release).toContain('.latest_stage.status == "success"');
   });
 
-  it('builds the BFF image in CI without publishing from pull requests', () => {
-    const workflow = parse(
-      readFileSync(resolve(workflowsPath, 'ci.yml'), 'utf8'),
-    ) as {jobs: Record<string, {steps: Array<{run?: string}>}>};
-    const commands = workflow.jobs.verify.steps
-      .map(step => step.run ?? '')
-      .join('\n');
+  it('uses Ford-service as the backend and does not publish a standalone BFF image', () => {
+    const ci = readFileSync(resolve(workflowsPath, 'ci.yml'), 'utf8');
+    const release = readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8');
 
-    expect(commands).toContain('docker build --pull --file Dockerfile.bff');
-    expect(commands).toContain('ford-web-bff:ci');
-    expect(commands).not.toMatch(/docker push|docker\/login-action/);
-    expect(readFileSync(resolve(process.cwd(), 'Dockerfile.bff'), 'utf8')).toContain(
-      'HEALTHCHECK',
-    );
-  });
-
-  it('publishes a scanned source-SHA BFF image from verified main releases', () => {
-    const workflow = parse(
-      readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8'),
-    ) as {
-      jobs: Record<
-        string,
-        {
-          needs?: string[];
-          if?: string;
-          permissions?: Record<string, string>;
-          steps: Array<{uses?: string; with?: Record<string, string>}>;
-        }
-      >;
-    };
-    const publish = workflow.jobs['publish-bff'];
-    const actions = publish.steps.map(step => step.uses ?? '').join('\n');
-    const stepInputs = publish.steps.map(step => step.with ?? {});
-
-    expect(publish.needs).toContain('verify');
-    expect(publish.if).toContain("github.ref == 'refs/heads/main'");
-    expect(publish.permissions?.packages).toBe('write');
-    expect(actions).toContain('docker/build-push-action@v6');
-    expect(actions).toContain('aquasecurity/trivy-action@v0.36.0');
-    expect(actions).toContain('anchore/sbom-action@v0.20.0');
-    expect(actions).toContain('actions/attest-build-provenance@v2');
-    expect(stepInputs.some(input => input.tags?.includes('sha-'))).toBe(true);
+    expect(ci).not.toContain('Dockerfile.bff');
+    expect(release).not.toContain('publish-bff');
+    expect(release).not.toContain('docker/build-push-action');
+    expect(release).toContain('wrangler pages deploy');
+    expect(() => readFileSync(resolve(process.cwd(), 'Dockerfile.bff'))).toThrow();
   });
 });
