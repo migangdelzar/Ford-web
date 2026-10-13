@@ -50,15 +50,12 @@ jobs:
             --commit-hash "$SOURCE_SHA" \
             --commit-message "GitHub Actions preview $SOURCE_SHA"
 
-          deployments="$(mktemp)"
-          trap 'rm -f "$deployments"' EXIT
-          bunx wrangler pages deployment list \
-            --project-name ford-web-ui \
-            --json > "$deployments"
-          deployment="$(jq -cer \
-            --arg sha "${SOURCE_SHA:0:7}" \
-            '[.[] | select(.Source == $sha and .Branch == "actions-e2e-preview" and .Environment == "Preview" and .Status == "Success")][0] | {id: .Id, url: .Deployment}' \
-            "$deployments")"
+          deployment="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/ford-web-ui/deployments?env=preview" \
+            | jq -cer \
+              --arg sha "$SOURCE_SHA" \
+              '[.result[] | select(.environment == "preview" and .deployment_trigger.metadata.branch == "actions-e2e-preview" and .deployment_trigger.metadata.commit_hash == $sha and .latest_stage.name == "deploy" and .latest_stage.status == "success")][0] | select(.id != null and .url != null) | {id: .id, url: .url}')"
           echo "id=$(jq -r '.id' <<< "$deployment")" >> "$GITHUB_OUTPUT"
           echo "url=$(jq -r '.url' <<< "$deployment")" >> "$GITHUB_OUTPUT"
 

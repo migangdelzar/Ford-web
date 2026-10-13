@@ -130,15 +130,11 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$OPERATION" == "rollback" ]]; then
-            prior_deployments="$(mktemp)"
-            bunx wrangler pages deployment list \
-              --project-name ford-web-ui \
-              --environment production \
-              --json > "$prior_deployments"
-            prior_count="$(jq --arg sha "${SOURCE_SHA:0:7}" \
-              '[.[] | select(.Source == $sha and .Environment == "Production" and .Status == "Success")] | length' \
-              "$prior_deployments")"
-            rm -f "$prior_deployments"
+            prior_count="$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/ford-web-ui/deployments?env=production" \
+              | jq --arg sha "$SOURCE_SHA" \
+                '[.result[] | select(.environment == "production" and .deployment_trigger.metadata.commit_hash == $sha and .latest_stage.name == "deploy" and .latest_stage.status == "success")] | length')"
             if [[ "$prior_count" == "0" ]]; then
               echo "rollback source has no successful prior production Pages deployment: $SOURCE_SHA" >&2
               exit 1
@@ -149,15 +145,12 @@ jobs:
             --branch main \
             --commit-hash "$SOURCE_SHA" \
             --commit-message "$OPERATION $SOURCE_SHA"
-          deployment_json="$(mktemp)"
-          bunx wrangler pages deployment list \
-            --project-name ford-web-ui \
-            --environment production \
-            --json > "$deployment_json"
-          deployment="$(jq -cer --arg sha "${SOURCE_SHA:0:7}" \
-            '[.[] | select(.Source == $sha and .Environment == "Production" and .Status == "Success")][0] | {id: .Id, url: .Deployment, details: .Build}' \
-            "$deployment_json")"
-          rm -f "$deployment_json"
+          deployment="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/ford-web-ui/deployments?env=production" \
+            | jq -cer \
+              --arg sha "$SOURCE_SHA" \
+              '[.result[] | select(.environment == "production" and .deployment_trigger.metadata.branch == "main" and .deployment_trigger.metadata.commit_hash == $sha and .latest_stage.name == "deploy" and .latest_stage.status == "success")][0] | select(.id != null and .url != null) | {id: .id, url: .url, details: .deployment_trigger.metadata.commit_message}')"
           deployment_id="$(jq -r '.id' <<< "$deployment")"
           deployment_url="$(jq -r '.url' <<< "$deployment")"
           deployment_details="$(jq -r '.details' <<< "$deployment")"

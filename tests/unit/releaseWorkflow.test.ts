@@ -43,7 +43,8 @@ describe('Ford-web release workflow contract', () => {
     expect(deploy.if).toContain("github.ref == 'refs/heads/main'");
     expect(deploy.if).toContain("vars.PRODUCTION_DEPLOY_ENABLED == 'true'");
     expect(commands).toContain('wrangler pages deploy');
-    expect(commands).toContain('wrangler pages deployment list');
+    expect(commands).toContain('/client/v4/accounts/');
+    expect(commands).toContain('.latest_stage.status == "success"');
     expect(commands).toContain('no successful prior production Pages deployment');
     expect(commands).toContain('Deployment ID: $deployment_id');
     expect(commands).toContain('bun run api:check -- openapi.ford-service.yaml');
@@ -64,6 +65,8 @@ describe('Ford-web release workflow contract', () => {
     expect(preview.environment).toBe('pages-preview');
     expect(commands).toContain('--branch actions-e2e-preview');
     expect(commands).not.toContain('--branch main');
+    expect(commands).toContain('/client/v4/accounts/');
+    expect(commands).toContain('.latest_stage.status == "success"');
     expect(commands).toContain('/api/v1/health');
   });
 
@@ -77,5 +80,8 @@ describe('Ford-web release workflow contract', () => {
     expect(config.name).toBe('ford-web-ui');
     expect(preview).toContain('--project-name ford-web-ui');
     expect(release).toContain('--project-name ford-web-ui');
+    expect(preview).toContain('.deployment_trigger.metadata.commit_hash == $sha');
+    expect(release).toContain('.deployment_trigger.metadata.commit_hash == $sha');
+    expect(release).toContain('.latest_stage.status == "success"');
   });
 });
