@@ -132,7 +132,7 @@ jobs:
           if [[ "$OPERATION" == "rollback" ]]; then
             prior_deployments="$(mktemp)"
             bunx wrangler pages deployment list \
-              --project-name ford-crm-ui \
+              --project-name ford-web-ui \
               --environment production \
               --json > "$prior_deployments"
             prior_count="$(jq --arg sha "${SOURCE_SHA:0:7}" \
@@ -145,13 +145,13 @@ jobs:
             fi
           fi
           bunx wrangler pages deploy dist \
-            --project-name ford-crm-ui \
+            --project-name ford-web-ui \
             --branch main \
             --commit-hash "$SOURCE_SHA" \
             --commit-message "$OPERATION $SOURCE_SHA"
           deployment_json="$(mktemp)"
           bunx wrangler pages deployment list \
-            --project-name ford-crm-ui \
+            --project-name ford-web-ui \
             --environment production \
             --json > "$deployment_json"
           deployment="$(jq -cer --arg sha "${SOURCE_SHA:0:7}" \
@@ -165,7 +165,7 @@ jobs:
             echo "### Ford Web deployment"
             echo "- Operation: $OPERATION"
             echo "- Source commit: $SOURCE_SHA"
-            echo "- Project: ford-crm-ui"
+            echo "- Project: ford-web-ui"
             echo "- Deployment ID: $deployment_id"
             echo "- Deployment URL: $deployment_url"
             echo "- Deployment details: $deployment_details"

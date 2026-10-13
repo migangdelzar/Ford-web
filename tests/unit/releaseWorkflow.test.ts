@@ -66,4 +66,16 @@ describe('Ford-web release workflow contract', () => {
     expect(commands).not.toContain('--branch main');
     expect(commands).toContain('/api/v1/health');
   });
+
+  it('uses the existing Cloudflare Pages project consistently across workflows', () => {
+    const config = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'wrangler.jsonc'), 'utf8'),
+    ) as {name: string};
+    const preview = readFileSync(resolve(workflowsPath, 'preview.yml'), 'utf8');
+    const release = readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8');
+
+    expect(config.name).toBe('ford-web-ui');
+    expect(preview).toContain('--project-name ford-web-ui');
+    expect(release).toContain('--project-name ford-web-ui');
+  });
 });

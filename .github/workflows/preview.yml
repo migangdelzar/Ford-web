@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           bunx wrangler pages deploy dist \
-            --project-name ford-crm-ui \
+            --project-name ford-web-ui \
             --branch actions-e2e-preview \
             --commit-hash "$SOURCE_SHA" \
             --commit-message "GitHub Actions preview $SOURCE_SHA"
@@ -53,7 +53,7 @@ jobs:
           deployments="$(mktemp)"
           trap 'rm -f "$deployments"' EXIT
           bunx wrangler pages deployment list \
-            --project-name ford-crm-ui \
+            --project-name ford-web-ui \
             --json > "$deployments"
           deployment="$(jq -cer \
             --arg sha "${SOURCE_SHA:0:7}" \
