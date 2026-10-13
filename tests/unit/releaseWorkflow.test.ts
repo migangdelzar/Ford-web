@@ -88,11 +88,16 @@ describe('Ford-web release workflow contract', () => {
   it('uses Ford-service as the backend and does not publish a standalone BFF image', () => {
     const ci = readFileSync(resolve(workflowsPath, 'ci.yml'), 'utf8');
     const release = readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8');
+    const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
 
     expect(ci).not.toContain('Dockerfile.bff');
     expect(release).not.toContain('publish-bff');
     expect(release).not.toContain('docker/build-push-action');
     expect(release).toContain('wrangler pages deploy');
+    expect(packageJson.scripts.build).not.toContain('build:bff');
+    expect(packageJson.scripts['build:bff']).toBeUndefined();
     expect(() => readFileSync(resolve(process.cwd(), 'Dockerfile.bff'))).toThrow();
   });
 });
