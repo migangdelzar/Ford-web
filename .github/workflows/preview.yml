@@ -1,0 +1,80 @@
+name: Ford Web Actions Preview
+
+on:
+  push:
+    branches: [chore/platform-secret-management]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ford-web-actions-preview
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Build and smoke a Pages preview
+    runs-on: ubuntu-24.04
+    environment: pages-preview
+    timeout-minutes: 20
+    steps:
+      - name: Check out the pushed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify the selected source
+        run: |
+          set -euo pipefail
+          bun run lint
+          bun run test
+          bun run build
+          bun run api:check -- openapi.ford-service.yaml
+          bun run pages:check
+
+      - name: Deploy to an isolated Cloudflare Pages preview
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bunx wrangler pages deploy dist \
+            --project-name ford-web-ui \
+            --branch actions-e2e-preview \
+            --commit-hash "$SOURCE_SHA" \
+            --commit-message "GitHub Actions preview $SOURCE_SHA"
+
+          deployment="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/ford-web-ui/deployments?env=preview" \
+            | jq -cer \
+              --arg sha "$SOURCE_SHA" \
+              '[.result[] | select(.environment == "preview" and .deployment_trigger.metadata.branch == "actions-e2e-preview" and .deployment_trigger.metadata.commit_hash == $sha and .latest_stage.name == "deploy" and .latest_stage.status == "success")][0] | select(.id != null and .url != null) | {id: .id, url: .url}')"
+          echo "id=$(jq -r '.id' <<< "$deployment")" >> "$GITHUB_OUTPUT"
+          echo "url=$(jq -r '.url' <<< "$deployment")" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke the deployed preview
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          test -n "$PREVIEW_URL"
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 3 \
+            "$PREVIEW_URL" -o /dev/null
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+            "${PREVIEW_URL%/}/api/v1/health" -o /dev/null
+          {
+            echo '### Ford Web Actions preview'
+            echo "- Source: $GITHUB_SHA"
+            echo '- Environment: Cloudflare Pages Preview'
+            echo "- Deployment ID: ${{ steps.deploy.outputs.id }}"
+            echo "- URL: $PREVIEW_URL"
+            echo '- UI and API health smoke: passed'
+            echo '- Production Pages branch and deployment: unchanged'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -6,7 +6,7 @@ import { composeOpenApi } from '../../scripts/api-contract';
 
 const serviceSpecPath = resolve(
   import.meta.dirname,
-  '../../../Ford-uruapan/ford-ai-service/docs/openapi/frontend-api.yaml',
+  '../../openapi.ford-service.yaml',
 );
 
 function readYaml(path: string): Record<string, any> {

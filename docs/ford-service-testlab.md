@@ -18,20 +18,16 @@ cookie. Validated bearer JWTs remain available for service clients.
 - Inbox reads, messages, handoffs, and operator event streams use Ford-service.
 - Spring serves the UI through its reverse proxy to the static Pages app.
 
-## Staged production migration
+## Runtime ownership
 
-The new Spring and UI code is not the same as a completed production cutover.
-The BFF container and `ford-origin.emme.business` route remain as rollback
-paths until the Pages function routes to Spring, the public host is switched to
-the Tunnel, and login/API/webhook checks pass. Existing `ford_session` users
-will need to sign in again when browser auth moves to the Spring `SESSION`
-cookie. Keep the OpenTelemetry Collector.
+Ford-service is the only application backend container. It owns browser
+authentication, operator APIs, webhooks, and the reverse proxy to the static
+Pages UI. Ford-web does not build or publish a separate BFF image. Keep the
+OpenTelemetry Collector.
 
-For Pages preview, the function still forwards approved auth/API routes to its
-configured `FORD_ORIGIN_URL`. During rollout that origin must reach Spring
-directly; the final public UI uses `ford.emme.business` and does not depend on
-the BFF hostname. `/webhooks/meta/**` reaches Spring only after the public DNS
-cutover.
+For Pages preview, the function forwards approved auth/API routes to its
+configured `FORD_ORIGIN_URL`, which must reach Ford-service. The final public
+UI uses `ford.emme.business`; `/webhooks/meta/**` also reaches Ford-service.
 
 ## Current limits
 
