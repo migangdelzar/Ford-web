@@ -6,6 +6,14 @@ import {parse} from 'yaml';
 const workflowsPath = resolve(process.cwd(), '.github/workflows');
 
 describe('Ford-web release workflow contract', () => {
+  it('runs verification on branch pushes so release changes can be checked before merge', () => {
+    const workflow = parse(
+      readFileSync(resolve(workflowsPath, 'ci.yml'), 'utf8'),
+    ) as {on: Record<string, unknown>};
+
+    expect(workflow.on.push).toBeNull();
+  });
+
   it('verifies PR changes without production credentials', () => {
     const workflow = parse(
       readFileSync(resolve(workflowsPath, 'ci.yml'), 'utf8'),
