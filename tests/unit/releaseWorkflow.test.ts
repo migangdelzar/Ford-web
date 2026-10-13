@@ -49,4 +49,21 @@ describe('Ford-web release workflow contract', () => {
     expect(commands).toContain('bun run api:check -- openapi.ford-service.yaml');
     expect(commands).toContain('/api/v1/health');
   });
+
+  it('limits the GitHub Actions Pages smoke deploy to a non-production preview', () => {
+    const workflow = parse(
+      readFileSync(resolve(workflowsPath, 'preview.yml'), 'utf8'),
+    ) as {
+      on: {push: {branches: string[]}};
+      jobs: Record<string, {environment?: string; steps: Array<{run?: string}>}>;
+    };
+    const preview = workflow.jobs.preview;
+    const commands = preview.steps.map(step => step.run ?? '').join('\n');
+
+    expect(workflow.on.push.branches).toContain('chore/platform-secret-management');
+    expect(preview.environment).toBe('pages-preview');
+    expect(commands).toContain('--branch actions-e2e-preview');
+    expect(commands).not.toContain('--branch main');
+    expect(commands).toContain('/api/v1/health');
+  });
 });
