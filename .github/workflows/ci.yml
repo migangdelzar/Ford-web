@@ -33,6 +33,11 @@ jobs:
       - name: Production build
         run: bun run build
 
+      - name: Build and smoke the OCI BFF image without publishing
+        run: |
+          docker build --pull --file Dockerfile.bff --tag ford-web-bff:ci .
+          docker run --rm --entrypoint node ford-web-bff:ci --version
+
       - name: Check API contract
         run: bun run api:check -- openapi.ford-service.yaml
 
