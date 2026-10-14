@@ -70,6 +70,24 @@ describe('Ford-web release workflow contract', () => {
     expect(commands).toContain('/api/v1/health');
   });
 
+  it('allows verified main to run a retried Pages preview without enabling production', () => {
+    const workflow = parse(
+      readFileSync(resolve(workflowsPath, 'preview.yml'), 'utf8'),
+    ) as {
+      on: {workflow_dispatch?: unknown};
+      jobs: Record<string, {if?: string; steps: Array<{run?: string}>}>;
+    };
+    const preview = workflow.jobs.preview;
+    const commands = preview.steps.map(step => step.run ?? '').join('\n');
+
+    expect(workflow.on).toHaveProperty('workflow_dispatch');
+    expect(preview.if).toContain("github.ref == 'refs/heads/main'");
+    expect(preview.if).toContain("github.ref == 'refs/heads/chore/platform-secret-management'");
+    expect(commands).toContain('--branch actions-e2e-preview');
+    expect(commands).toContain('--retry-all-errors');
+    expect(commands).not.toContain('--branch main');
+  });
+
   it('uses the existing Cloudflare Pages project consistently across workflows', () => {
     const config = JSON.parse(
       readFileSync(resolve(process.cwd(), 'wrangler.jsonc'), 'utf8'),

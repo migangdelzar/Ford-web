@@ -3,6 +3,7 @@ name: Ford Web Actions Preview
 on:
   push:
     branches: [chore/platform-secret-management]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +15,7 @@ concurrency:
 jobs:
   preview:
     name: Build and smoke a Pages preview
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/chore/platform-secret-management'
     runs-on: ubuntu-24.04
     environment: pages-preview
     timeout-minutes: 20
