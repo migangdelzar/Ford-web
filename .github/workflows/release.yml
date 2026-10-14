@@ -47,6 +47,7 @@ jobs:
       - name: Resolve and validate source commit
         id: source
         env:
+          RELEASE_REF: ${{ github.ref }}
           INPUT_SHA: ${{ inputs.source_sha }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_OPERATION: ${{ inputs.operation }}
@@ -54,6 +55,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          [[ "${RELEASE_REF}" == 'refs/heads/main' ]] || {
+            echo 'Run Ford Web releases from main.' >&2
+            exit 1
+          }
           operation="${INPUT_OPERATION:-deploy}"
           if [[ "$operation" != "deploy" && "$operation" != "rollback" ]]; then
             echo "operation must be deploy or rollback" >&2
@@ -123,9 +128,26 @@ jobs:
       - name: Check Pages Functions build
         run: bun run pages:check
 
-  deploy:
+  production-readiness:
+    name: Require production release readiness
     needs: verify
-    if: ${{ github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' }}
+    if: needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PRODUCTION_DEPLOY_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+    steps:
+      - name: Fail clearly when production deployment is disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PRODUCTION_DEPLOY_ENABLED" == 'true' ]] || {
+            echo 'Production Pages release blocked: set PRODUCTION_DEPLOY_ENABLED=true after production readiness review.' >&2
+            exit 1
+          }
+
+  deploy:
+    needs: [verify, production-readiness]
+    if: ${{ github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && needs.production-readiness.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -135,6 +157,37 @@ jobs:
       deployment_id: ${{ steps.deploy-pages.outputs.deployment_id }}
       deployment_url: ${{ steps.deploy-pages.outputs.deployment_url }}
     steps:
+      - name: Validate Cloudflare production credentials and project access
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SMOKE_URL: ${{ vars.FORD_WEB_SMOKE_URL }}
+        run: |
+          set -euo pipefail
+          [[ -n "$CLOUDFLARE_API_TOKEN" ]] || {
+            echo 'Production Pages release blocked: add CLOUDFLARE_API_TOKEN to the production environment secrets.' >&2
+            exit 1
+          }
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" && -n "$SMOKE_URL" ]] || {
+            echo 'Production Pages release blocked: configure CLOUDFLARE_ACCOUNT_ID and FORD_WEB_SMOKE_URL as production environment variables.' >&2
+            exit 1
+          }
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            https://api.cloudflare.com/client/v4/user/tokens/verify \
+            | jq -e '.success == true and .result.status == "active"' >/dev/null || {
+              echo 'Production Pages release blocked: Cloudflare API token is invalid, inactive, or missing required access.' >&2
+              exit 1
+            }
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/emme-crm-ui" \
+            | jq -e '.success == true and .result.name == "emme-crm-ui"' >/dev/null || {
+              echo 'Production Pages release blocked: Cloudflare token cannot access the emme-crm-ui project.' >&2
+              exit 1
+            }
+
       - name: Check out selected commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -218,10 +271,11 @@ jobs:
 
   release-result:
     name: Record Pages release and deployment identity
-    needs: [verify, deploy]
+    needs: [verify, production-readiness, deploy]
     if: >-
       always() && needs.verify.result == 'success' &&
-      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped')
+      needs.production-readiness.result == 'success' &&
+      needs.deploy.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

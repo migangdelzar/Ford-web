@@ -43,3 +43,23 @@ test('production Pages releases require an annotated SemVer tag and exact succes
   assert.match(source, /"deploymentId": os\.environ\["DEPLOYMENT_ID"\]/);
   assert.match(source, /"imageDigest": None/);
 });
+
+test('requested Pages releases fail instead of producing a skipped deployment artifact', () => {
+  const source = readFileSync('.github/workflows/release.yml', 'utf8');
+
+  assert.match(source, /Run Ford Web releases from main/);
+  assert.match(source, /^  production-readiness:\s*$/m);
+  assert.match(source, /PRODUCTION_DEPLOY_ENABLED: \$\{\{ vars\.PRODUCTION_DEPLOY_ENABLED \}\}/);
+  assert.match(source, /needs\.production-readiness\.result == 'success'/);
+  assert.doesNotMatch(source, /needs\.deploy\.result == 'skipped'/);
+});
+
+test('production Pages deployment validates its production-scoped Cloudflare secret and variables', () => {
+  const source = readFileSync('.github/workflows/release.yml', 'utf8');
+
+  assert.match(source, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+  assert.match(source, /CLOUDFLARE_ACCOUNT_ID: \$\{\{ vars\.CLOUDFLARE_ACCOUNT_ID \}\}/);
+  assert.match(source, /FORD_WEB_SMOKE_URL/);
+  assert.match(source, /user\/tokens\/verify/);
+  assert.match(source, /pages\/projects\/emme-crm-ui/);
+});
