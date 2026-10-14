@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ford-web-ui",
+  "name": "emme-crm-ui",
   "pages_build_output_dir": "./dist",
   "vars": {
     "FORD_ORIGIN_URL": "https://ford-origin.emme.business"

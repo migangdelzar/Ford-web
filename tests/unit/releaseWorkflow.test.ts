@@ -99,19 +99,44 @@ describe('Ford-web release workflow contract', () => {
     expect(commands).not.toContain('--branch main');
   });
 
-  it('uses the existing Cloudflare Pages project consistently across workflows', () => {
+  it('uses the replacement Cloudflare Pages project consistently across workflows', () => {
     const config = JSON.parse(
       readFileSync(resolve(process.cwd(), 'wrangler.jsonc'), 'utf8'),
     ) as {name: string};
     const preview = readFileSync(resolve(workflowsPath, 'preview.yml'), 'utf8');
     const release = readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8');
 
-    expect(config.name).toBe('ford-web-ui');
-    expect(preview).toContain('--project-name ford-web-ui');
-    expect(release).toContain('--project-name ford-web-ui');
+    expect(config.name).toBe('emme-crm-ui');
+    expect(preview).toContain('--project-name emme-crm-ui');
+    expect(preview).toContain('--branch actions-e2e-preview');
+    expect(release).toContain('--project-name emme-crm-ui');
     expect(preview).toContain('.deployment_trigger.metadata.commit_hash == $sha');
     expect(release).toContain('.deployment_trigger.metadata.commit_hash == $sha');
     expect(release).toContain('.latest_stage.status == "success"');
+  });
+
+  it('stages the new Pages origin only from verified main in the preview environment', () => {
+    const workflow = parse(
+      readFileSync(resolve(workflowsPath, 'pages-origin-cutover.yml'), 'utf8'),
+    ) as {
+      on: {workflow_dispatch?: unknown};
+      jobs: Record<string, {environment?: string; if?: string; steps: Array<{run?: string; env?: Record<string, string>}>}>;
+    };
+    const deploy = workflow.jobs.deploy;
+    const commands = deploy.steps.map(step => step.run ?? '').join('\n');
+
+    expect(workflow.on).toHaveProperty('workflow_dispatch');
+    expect(deploy.environment).toBe('pages-preview');
+    expect(deploy.if).toContain("github.ref == 'refs/heads/main'");
+    expect(commands).toContain('gh run list --workflow ci.yml --branch main');
+    expect(commands).toContain('--project-name emme-crm-ui');
+    expect(commands).toContain('--branch main');
+    expect(deploy.steps.some(step => step.env?.ORIGIN === 'https://emme-crm-ui.pages.dev')).toBe(true);
+    expect(commands).toContain('/login');
+    expect(commands).toContain('asset_path');
+    expect(commands).toContain('fingerprinted asset');
+    expect(commands).toContain('ford-crm-ui.pages.dev');
+    expect(commands).toContain('retained for rollback');
   });
 
   it('uses Ford-service as the backend and does not publish a standalone BFF image', () => {
