@@ -1,9 +1,7 @@
 name: Release Ford Web
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('Release Ford Web [{0}] {1}', inputs.release_request_id || 'manual', inputs.source_sha || 'unspecified') || 'Release Ford Web' }}
+run-name: ${{ format('Release Ford Web [{0}] {1} {2}', inputs.release_request_id || 'manual', inputs.version || 'rollback', inputs.source_sha || 'recorded') }}
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       operation:
@@ -12,8 +10,12 @@ on:
         options: [deploy, rollback]
         default: deploy
         required: true
+      version:
+        description: Immutable annotated vMAJOR.MINOR.PATCH tag (deploy only)
+        type: string
+        required: false
       source_sha:
-        description: Full commit SHA; required for a manual deploy or rollback
+        description: Full commit SHA targeted by the version tag or selected for rollback
         type: string
         required: false
       release_request_id:
@@ -35,13 +37,18 @@ jobs:
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
       operation: ${{ steps.source.outputs.operation }}
+      version: ${{ steps.source.outputs.version }}
     steps:
+      - name: Check out release tooling from main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
       - name: Resolve and validate source commit
         id: source
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_SHA: ${{ github.sha }}
           INPUT_SHA: ${{ inputs.source_sha }}
+          INPUT_VERSION: ${{ inputs.version }}
           INPUT_OPERATION: ${{ inputs.operation }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -52,16 +59,34 @@ jobs:
             echo "operation must be deploy or rollback" >&2
             exit 1
           fi
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            sha="$EVENT_SHA"
-          else
-            sha="$INPUT_SHA"
-            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "source_sha must be a full 40-character commit SHA" >&2
+          sha="$INPUT_SHA"
+          version="$INPUT_VERSION"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha must be a full 40-character commit SHA" >&2
+            exit 1
+          fi
+          if [[ "$operation" == "deploy" ]]; then
+            if [[ ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "deploy requires a canonical vMAJOR.MINOR.PATCH version" >&2
               exit 1
             fi
-          fi
-          if [[ "$operation" == "rollback" ]]; then
+            git fetch --no-tags origin "refs/tags/${version}:refs/tags/${version}"
+            if [[ "$(git cat-file -t "refs/tags/${version}")" != "tag" || "$(git rev-parse "refs/tags/${version}^{commit}")" != "$sha" ]]; then
+              echo "version must be an annotated tag targeting source_sha" >&2
+              exit 1
+            fi
+            git merge-base --is-ancestor "$sha" refs/remotes/origin/main || {
+              echo "release tag source must be reachable from main" >&2
+              exit 1
+            }
+            runs="$(gh api "/repos/${GH_REPO}/actions/workflows/ci.yml/runs?head_sha=${sha}&event=push&status=success&per_page=100")"
+            jq -e --arg sha "$sha" --arg version "$version" \
+              '.workflow_runs | any(.head_sha == $sha and .head_branch == $version and .conclusion == "success")' \
+              <<<"$runs" >/dev/null || {
+              echo "version tag has no successful CI run for its exact SHA" >&2
+              exit 1
+            }
+          elif [[ "$operation" == "rollback" ]]; then
             count="$(gh run list --repo "$GH_REPO" --workflow ci.yml --commit "$sha" --status success --limit 1 --json databaseId --jq 'length')"
             if [[ "$count" != "1" ]]; then
               echo "rollback source must have a successful CI run: $sha" >&2
@@ -70,6 +95,7 @@ jobs:
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "operation=$operation" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Check out selected commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -105,6 +131,9 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      deployment_id: ${{ steps.deploy-pages.outputs.deployment_id }}
+      deployment_url: ${{ steps.deploy-pages.outputs.deployment_url }}
     steps:
       - name: Check out selected commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -127,10 +156,12 @@ jobs:
         run: bun run pages:check
 
       - name: Deploy immutable source commit
+        id: deploy-pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          VERSION: ${{ needs.verify.outputs.version }}
           OPERATION: ${{ needs.verify.outputs.operation }}
         run: |
           set -euo pipefail
@@ -159,10 +190,13 @@ jobs:
           deployment_id="$(jq -r '.id' <<< "$deployment")"
           deployment_url="$(jq -r '.url' <<< "$deployment")"
           deployment_details="$(jq -r '.details' <<< "$deployment")"
+          echo "deployment_id=${deployment_id}" >> "$GITHUB_OUTPUT"
+          echo "deployment_url=${deployment_url}" >> "$GITHUB_OUTPUT"
           {
             echo "### Ford Web deployment"
             echo "- Operation: $OPERATION"
             echo "- Source commit: $SOURCE_SHA"
+            echo "- Version: ${VERSION:-rollback}"
             echo "- Project: ford-web-ui"
             echo "- Deployment ID: $deployment_id"
             echo "- Deployment URL: $deployment_url"
@@ -181,3 +215,48 @@ jobs:
           curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 5 "$SMOKE_URL" -o /dev/null
           curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 5 \
             "${SMOKE_URL%/}/api/v1/health" -o /dev/null
+
+  release-result:
+    name: Record Pages release and deployment identity
+    needs: [verify, deploy]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Write release result manifest
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          DEPLOYMENT_RESULT: ${{ needs.deploy.result }}
+          DEPLOYMENT_ID: ${{ needs.deploy.outputs.deployment_id }}
+          DEPLOYMENT_URL: ${{ needs.deploy.outputs.deployment_url }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          deployed = os.environ["DEPLOYMENT_RESULT"] == "success"
+          result = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "version": os.environ["VERSION"] or None,
+              "tag": os.environ["VERSION"] or None,
+              "sourceSha": os.environ["SOURCE_SHA"],
+              "imageDigest": None,
+              "deploymentId": os.environ["DEPLOYMENT_ID"] or None if deployed else None,
+              "deploymentUrl": os.environ["DEPLOYMENT_URL"] or None if deployed else None,
+          }
+          Path(os.environ["RUNNER_TEMP"], "release-result.json").write_text(
+              json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+      - name: Upload release result artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ford-release-result
+          path: ${{ runner.temp }}/release-result.json
+          if-no-files-found: error
+          retention-days: 90
