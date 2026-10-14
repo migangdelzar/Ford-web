@@ -27,3 +27,19 @@ test('Pages UI and API smoke checks retry edge propagation responses', () => {
     }
   }
 });
+
+test('production Pages releases require an annotated SemVer tag and exact successful CI source', () => {
+  const source = readFileSync('.github/workflows/release.yml', 'utf8');
+
+  assert.doesNotMatch(source, /^  push:/m);
+  assert.match(source, /version:/);
+  assert.match(source, /INPUT_VERSION/);
+  assert.match(source, /refs\/tags\/\$\{version\}/);
+  assert.match(source, /git cat-file -t/);
+  assert.match(source, /git merge-base --is-ancestor/);
+  assert.match(source, /head_branch == \$version/);
+  assert.match(source, /vars\.PRODUCTION_DEPLOY_ENABLED == 'true'/);
+  assert.match(source, /name: ford-release-result/);
+  assert.match(source, /"deploymentId": os\.environ\["DEPLOYMENT_ID"\]/);
+  assert.match(source, /"imageDigest": None/);
+});
