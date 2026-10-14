@@ -178,6 +178,6 @@ jobs:
             echo "Set FORD_WEB_SMOKE_URL in the production environment" >&2
             exit 1
           fi
-          curl --fail --silent --show-error --retry 8 --retry-delay 5 "$SMOKE_URL" -o /dev/null
-          curl --fail --silent --show-error --retry 8 --retry-delay 5 \
+          curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 5 "$SMOKE_URL" -o /dev/null
+          curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 5 \
             "${SMOKE_URL%/}/api/v1/health" -o /dev/null

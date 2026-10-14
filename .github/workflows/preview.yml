@@ -65,9 +65,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$PREVIEW_URL"
-          curl --fail --silent --show-error --location --retry 5 --retry-delay 3 \
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 3 \
             "$PREVIEW_URL" -o /dev/null
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 \
             "${PREVIEW_URL%/}/api/v1/health" -o /dev/null
           {
             echo '### Ford Web Actions preview'

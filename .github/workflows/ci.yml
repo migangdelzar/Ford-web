@@ -38,3 +38,6 @@ jobs:
 
       - name: Check Pages Functions build
         run: bun run pages:check
+
+      - name: Workflow contracts
+        run: node --test scripts/workflow-contract.test.mjs
