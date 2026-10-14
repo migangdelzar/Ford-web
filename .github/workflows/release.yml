@@ -1,4 +1,5 @@
 name: Release Ford Web
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Release Ford Web [{0}] {1}', inputs.release_request_id || 'manual', inputs.source_sha || 'unspecified') || 'Release Ford Web' }}
 
 on:
   push:
@@ -13,6 +14,10 @@ on:
         required: true
       source_sha:
         description: Full commit SHA; required for a manual deploy or rollback
+        type: string
+        required: false
+      release_request_id:
+        description: Coordinator correlation ID used to track release-all requests.
         type: string
         required: false
 
