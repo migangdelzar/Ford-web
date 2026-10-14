@@ -47,14 +47,14 @@ jobs:
         run: |
           set -euo pipefail
           bunx wrangler pages deploy dist \
-            --project-name ford-web-ui \
+            --project-name emme-crm-ui \
             --branch actions-e2e-preview \
             --commit-hash "$SOURCE_SHA" \
             --commit-message "GitHub Actions preview $SOURCE_SHA"
 
           deployment="$(curl --fail --silent --show-error \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/ford-web-ui/deployments?env=preview" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/emme-crm-ui/deployments?env=preview" \
             | jq -cer \
               --arg sha "$SOURCE_SHA" \
               '[.result[] | select(.environment == "preview" and .deployment_trigger.metadata.branch == "actions-e2e-preview" and .deployment_trigger.metadata.commit_hash == $sha and .latest_stage.name == "deploy" and .latest_stage.status == "success")][0] | select(.id != null and .url != null) | {id: .id, url: .url}')"

@@ -1,0 +1,106 @@
+name: Stage and verify emme Pages origin
+run-name: Stage emme-crm-ui from ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: emme-pages-origin-cutover
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy verified main to the isolated emme Pages project
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: pages-preview
+    timeout-minutes: 20
+    steps:
+      - name: Check out the selected main commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify selected commit has successful main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          count="$(gh run list --workflow ci.yml --branch main --commit "${SOURCE_SHA}" --status success --json databaseId --jq 'length')"
+          [[ "${count}" -gt 0 ]] || {
+            echo "Selected main commit has no successful CI run: ${SOURCE_SHA}" >&2
+            exit 1
+          }
+
+      - name: Verify build and Pages Functions
+        run: |
+          set -euo pipefail
+          bun run lint
+          bun run test
+          bun run build
+          bun run api:check -- openapi.ford-service.yaml
+          bun run pages:check
+
+      - name: Deploy the candidate as the emme Pages production origin
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          bunx wrangler pages deploy dist \
+            --project-name emme-crm-ui \
+            --branch main \
+            --commit-hash "${SOURCE_SHA}" \
+            --commit-message "Verified emme Pages origin ${SOURCE_SHA}"
+
+          deployment="$(curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/emme-crm-ui/deployments?env=production" \
+            | jq -cer \
+              --arg sha "${SOURCE_SHA}" \
+              '[.result[] | select(.environment == "production" and .deployment_trigger.metadata.branch == "main" and .deployment_trigger.metadata.commit_hash == $sha and .latest_stage.name == "deploy" and .latest_stage.status == "success")][0] | select(.id != null and .url != null) | {id: .id, url: .url}')"
+          echo "id=$(jq -r '.id' <<< "${deployment}")" >> "$GITHUB_OUTPUT"
+          echo "url=$(jq -r '.url' <<< "${deployment}")" >> "$GITHUB_OUTPUT"
+        id: deploy
+
+      - name: Smoke the new Pages origin and fingerprinted assets
+        env:
+          ORIGIN: https://emme-crm-ui.pages.dev
+        run: |
+          set -euo pipefail
+          for path in / /login /dashboard; do
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 3 \
+              "${ORIGIN}${path}" -o /dev/null
+          done
+          curl --fail --silent --show-error --location "${ORIGIN}/" -o "$RUNNER_TEMP/emme-pages-index.html"
+          asset_path="$(node - "$RUNNER_TEMP/emme-pages-index.html" <<'NODE'
+          const fs = require('node:fs');
+          const html = fs.readFileSync(process.argv[2], 'utf8');
+          const asset = html.match(/(?:src|href)=["']([^"']*\/assets\/[^"']+\.(?:js|css))(?:\?[^"']*)?["']/i);
+          if (!asset) process.exit(1);
+          console.log(asset[1]);
+          NODE
+          )"
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 3 \
+            "${ORIGIN}${asset_path}" -o /dev/null
+          {
+            echo '### emme-crm-ui Pages origin'
+            echo "- Source commit: ${GITHUB_SHA}"
+            echo "- Deployment ID: ${{ steps.deploy.outputs.id }}"
+            echo "- Origin: ${ORIGIN}"
+            echo '- `/`, `/login`, `/dashboard`, and a fingerprinted asset: passed'
+            echo '- Existing `ford-crm-ui.pages.dev` project and history: retained for rollback'
+            echo '- Public domain, DNS, and Spring upstream: unchanged by this workflow'
+          } >> "$GITHUB_STEP_SUMMARY"
