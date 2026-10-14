@@ -51,6 +51,17 @@ describe('Ford-web release workflow contract', () => {
     expect(commands).toContain('/api/v1/health');
   });
 
+  it('reads the Cloudflare account ID from environment configuration and keeps the token secret', () => {
+    const workflow = readFileSync(
+      resolve(workflowsPath, 'release.yml'),
+      'utf8',
+    );
+
+    expect(workflow).toContain('CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}');
+    expect(workflow).toContain('CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}');
+    expect(workflow).not.toContain('CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}');
+  });
+
   it('limits the GitHub Actions Pages smoke deploy to a non-production preview', () => {
     const workflow = parse(
       readFileSync(resolve(workflowsPath, 'preview.yml'), 'utf8'),
