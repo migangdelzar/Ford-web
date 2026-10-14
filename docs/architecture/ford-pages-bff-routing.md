@@ -75,7 +75,7 @@ DNS only resolves hostnames. Cloudflare Tunnel ingress routes requests by hostna
 
 - [x] Deploy Spring proxy and verify `/login`, app route, assets, redirect rewrite, and Spring health through the diagnostic origin.
 - [x] Route `/api/*` and authentication directly to Spring; verify Spring CSRF and auth routing through the diagnostic origin.
-- [ ] Deploy and verify `emme-crm-ui.pages.dev` directly.
+- [x] Deploy and verify `emme-crm-ui.pages.dev` directly: [Ford Web Actions run 38588412862](https://github.com/migangdelzar/Ford-web/actions/runs/38588412862), deployment `0056b296-f347-42ad-b73e-31fc735925d1` checked `/`, `/login`, `/dashboard`, and a fingerprinted asset.
 - [ ] Deploy Ford Service with `FORD_WEB_UI_UPSTREAM_URL=https://emme-crm-ui.pages.dev` (the default) and verify UI, API, authentication, OAuth, webhooks, assets, and redirects through `https://ford.emme.business`.
 - [ ] Retain the `ford-web-ui` Pages project and `ford-crm-ui.pages.dev` until the rollback window ends.
 
