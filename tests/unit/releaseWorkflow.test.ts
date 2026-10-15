@@ -35,13 +35,16 @@ describe('Ford-web release workflow contract', () => {
   it('gates deploy and rollback behind production approval and an explicit enable flag', () => {
     const workflow = parse(
       readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8'),
-    ) as {jobs: Record<string, {environment?: string; if?: string; steps: Array<{run?: string}>}>};
+    ) as {jobs: Record<string, {environment?: string; if?: string; outputs?: Record<string, string>; steps: Array<{run?: string}>}>};
     const deploy = workflow.jobs.deploy;
+    const readiness = workflow.jobs['production-readiness'];
     const commands = deploy.steps.map(step => step.run ?? '').join('\n');
 
-    expect(deploy.environment).toBe('production');
+    expect(readiness.environment).toBe('production');
+    expect(readiness.outputs?.smoke_url).toContain('steps.readiness.outputs.smoke_url');
+    expect(deploy.environment).toBe('pages-preview');
     expect(deploy.if).toContain("github.ref == 'refs/heads/main'");
-    expect(deploy.if).toContain("vars.PRODUCTION_DEPLOY_ENABLED == 'true'");
+    expect(readiness.steps.map(step => step.run ?? '').join('\n')).toContain('PRODUCTION_DEPLOY_ENABLED');
     expect(commands).toContain('wrangler pages deploy');
     expect(commands).toContain('/client/v4/accounts/');
     expect(commands).toContain('.latest_stage.status == "success"');

@@ -133,10 +133,15 @@ jobs:
     needs: verify
     if: needs.verify.result == 'success'
     runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      smoke_url: ${{ steps.readiness.outputs.smoke_url }}
     env:
       PRODUCTION_DEPLOY_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+      SMOKE_URL: ${{ vars.FORD_WEB_SMOKE_URL }}
     steps:
-      - name: Fail clearly when production deployment is disabled
+      - name: Validate production settings
+        id: readiness
         shell: bash
         run: |
           set -euo pipefail
@@ -144,12 +149,17 @@ jobs:
             echo 'Production Pages release blocked: set PRODUCTION_DEPLOY_ENABLED=true after production readiness review.' >&2
             exit 1
           }
+          [[ -n "$SMOKE_URL" ]] || {
+            echo 'Production Pages release blocked: configure FORD_WEB_SMOKE_URL in the production environment.' >&2
+            exit 1
+          }
+          echo "smoke_url=$SMOKE_URL" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: [verify, production-readiness]
-    if: ${{ github.ref == 'refs/heads/main' && vars.PRODUCTION_DEPLOY_ENABLED == 'true' && needs.production-readiness.result == 'success' }}
+    if: ${{ github.ref == 'refs/heads/main' && needs.production-readiness.result == 'success' }}
     runs-on: ubuntu-latest
-    environment: production
+    environment: pages-preview
     permissions:
       contents: read
       actions: read
@@ -157,20 +167,19 @@ jobs:
       deployment_id: ${{ steps.deploy-pages.outputs.deployment_id }}
       deployment_url: ${{ steps.deploy-pages.outputs.deployment_url }}
     steps:
-      - name: Validate Cloudflare production credentials and project access
+      - name: Validate Cloudflare Pages credentials and project access
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          SMOKE_URL: ${{ vars.FORD_WEB_SMOKE_URL }}
         run: |
           set -euo pipefail
           [[ -n "$CLOUDFLARE_API_TOKEN" ]] || {
-            echo 'Production Pages release blocked: add CLOUDFLARE_API_TOKEN to the production environment secrets.' >&2
+            echo 'Production Pages release blocked: add CLOUDFLARE_API_TOKEN to the pages-preview environment secrets.' >&2
             exit 1
           }
-          [[ -n "$CLOUDFLARE_ACCOUNT_ID" && -n "$SMOKE_URL" ]] || {
-            echo 'Production Pages release blocked: configure CLOUDFLARE_ACCOUNT_ID and FORD_WEB_SMOKE_URL as production environment variables.' >&2
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" ]] || {
+            echo 'Production Pages release blocked: configure CLOUDFLARE_ACCOUNT_ID in the pages-preview environment variables.' >&2
             exit 1
           }
           curl --fail --silent --show-error \
@@ -258,7 +267,7 @@ jobs:
 
       - name: Smoke check public deployment
         env:
-          SMOKE_URL: ${{ vars.FORD_WEB_SMOKE_URL }}
+          SMOKE_URL: ${{ needs.production-readiness.outputs.smoke_url }}
         run: |
           set -euo pipefail
           if [[ -z "$SMOKE_URL" ]]; then
