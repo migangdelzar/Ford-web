@@ -38,7 +38,7 @@ test('production Pages releases require an annotated SemVer tag and exact succes
   assert.match(source, /git cat-file -t/);
   assert.match(source, /git merge-base --is-ancestor/);
   assert.match(source, /head_branch == \$version/);
-  assert.match(source, /vars\.PRODUCTION_DEPLOY_ENABLED == 'true'/);
+  assert.match(source, /PRODUCTION_DEPLOY_ENABLED: \$\{\{ vars\.PRODUCTION_DEPLOY_ENABLED \}\}/);
   assert.match(source, /name: ford-release-result/);
   assert.match(source, /"deploymentId": os\.environ\["DEPLOYMENT_ID"\]/);
   assert.match(source, /"imageDigest": None/);
@@ -50,16 +50,21 @@ test('requested Pages releases fail instead of producing a skipped deployment ar
   assert.match(source, /Run Ford Web releases from main/);
   assert.match(source, /^  production-readiness:\s*$/m);
   assert.match(source, /PRODUCTION_DEPLOY_ENABLED: \$\{\{ vars\.PRODUCTION_DEPLOY_ENABLED \}\}/);
+  assert.match(source, /production-readiness:[\s\S]*?environment: production/);
+  assert.match(source, /deploy:[\s\S]*?environment: pages-preview/);
+  assert.match(source, /SMOKE_URL: \$\{\{ vars\.FORD_WEB_SMOKE_URL \}\}/);
   assert.match(source, /needs\.production-readiness\.result == 'success'/);
+  assert.doesNotMatch(source, /if:.*vars\.PRODUCTION_DEPLOY_ENABLED/);
   assert.doesNotMatch(source, /needs\.deploy\.result == 'skipped'/);
 });
 
-test('production Pages deployment validates its production-scoped Cloudflare secret and variables', () => {
+test('production Pages deployment uses the Pages credential environment after production approval', () => {
   const source = readFileSync('.github/workflows/release.yml', 'utf8');
 
   assert.match(source, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
   assert.match(source, /CLOUDFLARE_ACCOUNT_ID: \$\{\{ vars\.CLOUDFLARE_ACCOUNT_ID \}\}/);
-  assert.match(source, /FORD_WEB_SMOKE_URL/);
+  assert.match(source, /Production Pages release blocked: add CLOUDFLARE_API_TOKEN to the pages-preview environment secrets/);
+  assert.match(source, /SMOKE_URL: \$\{\{ needs\.production-readiness\.outputs\.smoke_url \}\}/);
   assert.match(source, /user\/tokens\/verify/);
   assert.match(source, /pages\/projects\/emme-crm-ui/);
 });
