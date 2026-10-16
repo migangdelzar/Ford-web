@@ -55,7 +55,7 @@ test('requested Pages releases fail instead of producing a skipped deployment ar
   assert.match(source, /PRODUCTION_DEPLOY_ENABLED: \$\{\{ vars\.PRODUCTION_DEPLOY_ENABLED \}\}/);
   assert.match(source, /production-readiness:[\s\S]*?environment: production/);
   assert.match(source, /approval:[\s\S]*?environment: manual-release-approval/);
-  assert.match(source, /github\.actor.*ford-release-coordinator\[bot\]/);
+  assert.match(source, /RELEASE_ACTOR.*ford-release-coordinator\[bot\]/);
   assert.match(source, /actions\/runs\/\$\{coordinator_run_id\}\/attempts\/\$\{coordinator_attempt\}\/jobs/);
   assert.match(source, /Approve and deploy selected releases in order/);
   assert.match(source, /deploy:[\s\S]*?environment: pages-preview/);
