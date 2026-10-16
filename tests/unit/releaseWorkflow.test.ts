@@ -35,7 +35,7 @@ describe('Ford-web release workflow contract', () => {
   it('gates deploy and rollback behind production approval and an explicit enable flag', () => {
     const workflow = parse(
       readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8'),
-    ) as {jobs: Record<string, {environment?: string; if?: string; outputs?: Record<string, string>; steps: Array<{run?: string}>}>};
+    ) as {jobs: Record<string, {environment?: string; if?: string; outputs?: Record<string, string>; steps: Array<{run?: string; env?: Record<string, string>}>}>};
     const deploy = workflow.jobs.deploy;
     const readiness = workflow.jobs['production-readiness'];
     const commands = deploy.steps.map(step => step.run ?? '').join('\n');
@@ -51,7 +51,9 @@ describe('Ford-web release workflow contract', () => {
     expect(commands).toContain('no successful prior production Pages deployment');
     expect(commands).toContain('Deployment ID: $deployment_id');
     expect(commands).toContain('bun run api:check -- openapi.ford-service.yaml');
-    expect(commands).toContain('/api/v1/health');
+    expect(commands).toContain('bun run smoke:production');
+    expect(deploy.steps.some(step => step.env?.FORD_WEB_SMOKE_URL?.includes('production-readiness.outputs.smoke_url'))).toBe(true);
+    expect(deploy.steps.some(step => step.env?.FORD_WEB_UI_UPSTREAM_URL === 'https://emme-crm-ui.pages.dev')).toBe(true);
   });
 
   it('reads the Cloudflare account ID from environment configuration and keeps the token secret', () => {
