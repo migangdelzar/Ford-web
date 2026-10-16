@@ -184,9 +184,9 @@ jobs:
           }
           curl --fail --silent --show-error \
             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            https://api.cloudflare.com/client/v4/user/tokens/verify \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/tokens/verify" \
             | jq -e '.success == true and .result.status == "active"' >/dev/null || {
-              echo 'Production Pages release blocked: Cloudflare API token is invalid, inactive, or missing required access.' >&2
+              echo 'Production Pages release blocked: Cloudflare account API token is invalid, inactive, or missing required access.' >&2
               exit 1
             }
           curl --fail --silent --show-error \

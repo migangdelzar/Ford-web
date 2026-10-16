@@ -68,6 +68,7 @@ test('production Pages deployment uses the Pages credential environment after pr
   assert.match(source, /CLOUDFLARE_ACCOUNT_ID: \$\{\{ vars\.CLOUDFLARE_ACCOUNT_ID \}\}/);
   assert.match(source, /Production Pages release blocked: add CLOUDFLARE_API_TOKEN to the pages-preview environment secrets/);
   assert.match(source, /SMOKE_URL: \$\{\{ needs\.production-readiness\.outputs\.smoke_url \}\}/);
-  assert.match(source, /user\/tokens\/verify/);
+  assert.match(source, /accounts\/\$\{CLOUDFLARE_ACCOUNT_ID\}\/tokens\/verify/);
+  assert.doesNotMatch(source, /user\/tokens\/verify/);
   assert.match(source, /pages\/projects\/emme-crm-ui/);
 });
