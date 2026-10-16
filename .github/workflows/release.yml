@@ -38,6 +38,7 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
       operation: ${{ steps.source.outputs.operation }}
       version: ${{ steps.source.outputs.version }}
+      coordinator_dispatch: ${{ steps.source.outputs.coordinator_dispatch }}
     steps:
       - name: Check out release tooling from main
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -51,10 +52,37 @@ jobs:
           INPUT_SHA: ${{ inputs.source_sha }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_OPERATION: ${{ inputs.operation }}
+          RELEASE_ACTOR: ${{ github.actor }}
+          RELEASE_REQUEST_ID: ${{ inputs.release_request_id }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          coordinator_dispatch=false
+          if [[ -n "${RELEASE_REQUEST_ID}" ]]; then
+            [[ "${RELEASE_ACTOR}" == 'ford-release-coordinator[bot]' && "${RELEASE_REQUEST_ID}" =~ ^[0-9]+-[0-9]+$ ]] || {
+              echo 'Coordinator release request is not authorized.' >&2
+              exit 1
+            }
+            coordinator_run_id="${RELEASE_REQUEST_ID%-*}"
+            coordinator_attempt="${RELEASE_REQUEST_ID##*-}"
+            coordinator_run="$(gh api "repos/migangdelzar/Ford-uruapan/actions/runs/${coordinator_run_id}")"
+            jq -e --arg attempt "${coordinator_attempt}" \
+              '(.path | startswith(".github/workflows/release-all.yml@")) and
+               .event == "workflow_dispatch" and .head_branch == "main" and
+               .status == "in_progress" and (.run_attempt | tostring) == $attempt' \
+              <<<"${coordinator_run}" >/dev/null || {
+              echo 'Coordinator request does not identify an active release-all run on main.' >&2
+              exit 1
+            }
+            coordinator_jobs="$(gh api "repos/migangdelzar/Ford-uruapan/actions/runs/${coordinator_run_id}/attempts/${coordinator_attempt}/jobs?per_page=100")"
+            jq -e '.jobs | any(.name == "Approve and deploy selected releases in order" and .status == "in_progress")' \
+              <<<"${coordinator_jobs}" >/dev/null || {
+              echo 'Coordinator release job is not active; approval may not have been granted.' >&2
+              exit 1
+            }
+            coordinator_dispatch=true
+          fi
           [[ "${RELEASE_REF}" == 'refs/heads/main' ]] || {
             echo 'Run Ford Web releases from main.' >&2
             exit 1
@@ -101,6 +129,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "operation=$operation" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "coordinator_dispatch=${coordinator_dispatch}" >> "$GITHUB_OUTPUT"
 
       - name: Check out selected commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -128,10 +157,22 @@ jobs:
       - name: Check Pages Functions build
         run: bun run pages:check
 
+  approval:
+    name: Approve direct Ford Web deployment
+    needs: verify
+    if: needs.verify.result == 'success' && needs.verify.outputs.coordinator_dispatch != 'true'
+    runs-on: ubuntu-latest
+    environment: manual-release-approval
+    steps:
+      - name: Confirm direct Ford Web deployment approval
+        run: echo 'Direct Ford Web deployment approved.'
+
   production-readiness:
     name: Require production release readiness
-    needs: verify
-    if: needs.verify.result == 'success'
+    needs: [verify, approval]
+    if: >-
+      always() && needs.verify.result == 'success' &&
+      (needs.verify.outputs.coordinator_dispatch == 'true' || needs.approval.result == 'success')
     runs-on: ubuntu-latest
     environment: production
     outputs:
@@ -156,8 +197,10 @@ jobs:
           echo "smoke_url=$SMOKE_URL" >> "$GITHUB_OUTPUT"
 
   deploy:
-    needs: [verify, production-readiness]
-    if: ${{ github.ref == 'refs/heads/main' && needs.production-readiness.result == 'success' }}
+    needs: [verify, approval, production-readiness]
+    if: >-
+      always() && github.ref == 'refs/heads/main' && needs.production-readiness.result == 'success' &&
+      (needs.verify.outputs.coordinator_dispatch == 'true' || needs.approval.result == 'success')
     runs-on: ubuntu-latest
     environment: pages-preview
     permissions:
