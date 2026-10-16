@@ -2,11 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const workflows = [
-  ['preview', '.github/workflows/preview.yml', 'Smoke the deployed preview'],
-  ['production', '.github/workflows/release.yml', 'Smoke check public deployment'],
-];
-
 function smokeCurlCommands(source, marker) {
   const smoke = source.slice(source.indexOf(marker));
   const commands = [];
@@ -16,16 +11,24 @@ function smokeCurlCommands(source, marker) {
   return commands;
 }
 
-test('Pages UI and API smoke checks retry edge propagation responses', () => {
-  for (const [environment, path, marker] of workflows) {
-    const source = readFileSync(path, 'utf8');
-    const commands = smokeCurlCommands(source, marker);
+test('Pages preview UI and API smoke checks retry edge propagation responses', () => {
+  const source = readFileSync('.github/workflows/preview.yml', 'utf8');
+  const commands = smokeCurlCommands(source, 'Smoke the deployed preview');
 
-    assert.equal(commands.length, 2, `${environment} should smoke the UI and API`);
-    for (const command of commands) {
-      assert.match(command, /--retry-all-errors/, `${environment} curl should retry transient HTTP failures`);
-    }
+  assert.equal(commands.length, 2, 'preview should smoke the UI and API');
+  for (const command of commands) {
+    assert.match(command, /--retry-all-errors/, 'preview curl should retry transient HTTP failures');
   }
+});
+
+test('production release runs the thorough Spring-proxy smoke checker', () => {
+  const source = readFileSync('.github/workflows/release.yml', 'utf8');
+
+  assert.match(source, /FORD_WEB_SMOKE_URL: \$\{\{ needs\.production-readiness\.outputs\.smoke_url \}\}/);
+  assert.match(source, /FORD_WEB_UI_UPSTREAM_URL: https:\/\/emme-crm-ui\.pages\.dev/);
+  assert.match(source, /run: bun run smoke:production/);
+  assert.match(readFileSync('package.json', 'utf8'), /"smoke:production": "node scripts\/production-smoke\.mjs"/);
+  assert.match(readFileSync('.github/workflows/ci.yml', 'utf8'), /node --test scripts\/workflow-contract\.test\.mjs scripts\/production-smoke\.test\.mjs/);
 });
 
 test('production Pages releases require an annotated SemVer tag and exact successful CI source', () => {

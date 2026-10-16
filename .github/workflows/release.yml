@@ -267,16 +267,9 @@ jobs:
 
       - name: Smoke check public deployment
         env:
-          SMOKE_URL: ${{ needs.production-readiness.outputs.smoke_url }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$SMOKE_URL" ]]; then
-            echo "Set FORD_WEB_SMOKE_URL in the production environment" >&2
-            exit 1
-          fi
-          curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 5 "$SMOKE_URL" -o /dev/null
-          curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 5 \
-            "${SMOKE_URL%/}/api/v1/health" -o /dev/null
+          FORD_WEB_SMOKE_URL: ${{ needs.production-readiness.outputs.smoke_url }}
+          FORD_WEB_UI_UPSTREAM_URL: https://emme-crm-ui.pages.dev
+        run: bun run smoke:production
 
   release-result:
     name: Record Pages release and deployment identity
