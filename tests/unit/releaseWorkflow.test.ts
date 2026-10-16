@@ -56,6 +56,19 @@ describe('Ford-web release workflow contract', () => {
     expect(deploy.steps.some(step => step.env?.FORD_WEB_UI_UPSTREAM_URL === 'https://emme-crm-ui.pages.dev')).toBe(true);
   });
 
+  it('accepts the canonical GitHub API path for release-all coordinator runs', () => {
+    const workflow = parse(
+      readFileSync(resolve(workflowsPath, 'release.yml'), 'utf8'),
+    ) as {jobs: Record<string, {steps: Array<{name?: string; run?: string}>}>};
+    const sourceValidation = workflow.jobs.verify.steps.find(
+      step => step.name === 'Resolve and validate source commit',
+    )?.run;
+
+    expect(sourceValidation).toContain('(.path == ".github/workflows/release-all.yml")');
+    expect(sourceValidation).toContain('.status == "in_progress"');
+    expect(sourceValidation).toContain('and .head_branch == "main"');
+  });
+
   it('reads the Cloudflare account ID from environment configuration and keeps the token secret', () => {
     const workflow = readFileSync(
       resolve(workflowsPath, 'release.yml'),
