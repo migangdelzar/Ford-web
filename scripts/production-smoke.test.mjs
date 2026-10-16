@@ -21,7 +21,7 @@ function response(res, status, contentType, body, headers = {}) {
   res.end(body);
 }
 
-async function fixtures({ leakRedirect = false, wrongAsset = false, wrongUpstreamAsset = false, badAssetCache = false, initialLoginFailures = 0 } = {}) {
+async function fixtures({ leakRedirect = false, wrongAsset = false, wrongUpstreamAsset = false, badAssetCache = false, authorizeStatus = 401, initialLoginFailures = 0 } = {}) {
   const html = `<!doctype html><html><head><link rel="stylesheet" href="${cssPath}"></head><body><script src="${jsPath}"></script></body></html>`;
   const upstream = await startServer((req, res) => {
     if (req.url === jsPath) return response(res, 200, 'application/javascript', wrongUpstreamAsset ? Buffer.from('different build') : jsBody, { 'cache-control': 'public, max-age=31536000, immutable' });
@@ -39,7 +39,7 @@ async function fixtures({ leakRedirect = false, wrongAsset = false, wrongUpstrea
     if (req.url === '/login' || req.url === '/dashboard') return response(res, 200, 'text/html', html, { 'cache-control': 'public, max-age=0, must-revalidate' });
     if (req.url === '/api/v1/health') return response(res, 200, 'application/json', '{}');
     if (req.url === '/.well-known/openid-configuration' || req.url === '/oauth2/jwks') return response(res, 200, 'application/json', '{}');
-    if (req.url === '/oauth2/authorize?response_type=code&client_id=smoke') return response(res, 401, null, '');
+    if (req.url === '/oauth2/authorize?response_type=code&client_id=smoke') return response(res, authorizeStatus, null, '');
     if (req.url === '/webhooks/meta/whatsapp') return response(res, 400, null, '');
     if (req.url === jsPath) return response(res, 200, wrongAsset ? 'text/html' : 'application/javascript', wrongAsset ? '<!doctype html>' : jsBody, { 'cache-control': badAssetCache ? 'public, max-age=0' : 'public, max-age=31536000, immutable' });
     if (req.url === cssPath) return response(res, 200, 'text/css', cssBody, { 'cache-control': 'public, max-age=31536000, immutable' });
@@ -95,4 +95,10 @@ test('retries while the public edge is propagating a deployment', async () => {
   const { publicOrigin, upstream } = await fixtures({ initialLoginFailures: 1 });
   const result = await verifyProduction({ publicOrigin, upstreamOrigin: upstream, attempts: 2, retryDelayMs: 1 });
   assert.equal(result.assets, 2);
+});
+
+test('accepts authorization rejection statuses for an unauthenticated smoke client', async () => {
+  const { publicOrigin, upstream } = await fixtures({ authorizeStatus: 400 });
+  const result = await verifyProduction({ publicOrigin, upstreamOrigin: upstream, attempts: 1 });
+  assert.equal(result.routes, 8);
 });

@@ -53,9 +53,10 @@ function extractFingerprintAssets(html) {
 
 async function readCheckedRoute(path, expectedStatus, expectedType, publicOrigin, fetchImpl) {
   const response = await getSameOrigin(new URL(path, publicOrigin), publicOrigin, fetchImpl);
-  if (response.status !== expectedStatus) {
+  const acceptedStatuses = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
+  if (!acceptedStatuses.includes(response.status)) {
     await response.body?.cancel();
-    throw new Error(`${path} returned HTTP ${response.status}; expected ${expectedStatus}`);
+    throw new Error(`${path} returned HTTP ${response.status}; expected ${acceptedStatuses.join(' or ')}`);
   }
   if (expectedType) {
     const type = response.headers.get('content-type') ?? '';
@@ -93,7 +94,7 @@ async function verifyOnce({ publicBase, upstreamBase, fetchImpl }) {
     ['/api/v1/health', 200, 'application/json'],
     ['/.well-known/openid-configuration', 200, 'application/json'],
     ['/oauth2/jwks', 200, 'application/json'],
-    ['/oauth2/authorize?response_type=code&client_id=smoke', 401, null],
+    ['/oauth2/authorize?response_type=code&client_id=smoke', [400, 401], null],
     ['/webhooks/meta/whatsapp', 400, null],
   ];
 
