@@ -4,6 +4,7 @@ export interface OperatorSession {
   email: string;
   roles: string[];
   tenantIds: string[];
+  hasPasskey: boolean;
 }
 
 export interface CsrfResponse {
@@ -53,5 +54,6 @@ function isOperatorSession(value: unknown): value is OperatorSession {
     && typeof profile.displayName === 'string'
     && typeof profile.email === 'string'
     && Array.isArray(profile.roles)
-    && Array.isArray(profile.tenantIds);
+    && Array.isArray(profile.tenantIds)
+    && typeof profile.hasPasskey === 'boolean';
 }

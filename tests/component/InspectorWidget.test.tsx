@@ -9,7 +9,7 @@ describe('InspectorWidget (Ficha del Prospecto)', () => {
     const { result } = renderHook(() => useCrmStore());
     act(() => {
       result.current.resetAllData();
-      result.current.completeAuthCheck({ operatorId: 'op-1', displayName: 'Admin', email: 'admin@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'] });
+      result.current.completeAuthCheck({ operatorId: 'op-1', displayName: 'Admin', email: 'admin@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'], hasPasskey: false });
       // Keep fixture data explicit: real authenticated sessions clear browser demo conversations.
       result.current.resetAllData();
       result.current.selectConversation('conv-1');

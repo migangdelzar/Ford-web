@@ -235,7 +235,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperatorSession"
+                  "$ref": "#/components/schemas/BrowserOperatorSession"
                 }
               }
             }
@@ -3119,6 +3119,51 @@
               "type": "string",
               "format": "uuid"
             }
+          }
+        }
+      },
+      "BrowserOperatorSession": {
+        "type": "object",
+        "required": [
+          "operatorId",
+          "displayName",
+          "email",
+          "roles",
+          "tenantIds",
+          "hasPasskey"
+        ],
+        "properties": {
+          "operatorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "OPERATOR",
+                "MANAGER",
+                "ADMIN"
+              ]
+            }
+          },
+          "tenantIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "hasPasskey": {
+            "type": "boolean"
           }
         }
       },

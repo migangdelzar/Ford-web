@@ -7,6 +7,7 @@ const operator = {
   email: 'operator@example.com',
   roles: ['OPERATOR'],
   tenantIds: ['c47f9e67-8252-438a-a1e5-7bc15b63dc33'],
+  hasPasskey: false,
 };
 
 describe('Ford-service operator auth API', () => {
