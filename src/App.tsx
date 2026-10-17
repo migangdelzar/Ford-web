@@ -15,11 +15,13 @@ import { CookieConsentBanner } from './features/compliance/ui/CookieConsentBanne
 import { LegalModal, LegalTab } from './features/compliance/ui/LegalModal';
 import { useSseEvents } from './shared/lib/useSseEvents';
 import { OfflineIndicator } from './shared/lib/pwa';
-import { readOperatorSession } from './shared/api/operatorAuth';
+import { readOperatorSession, type OperatorSession } from './shared/api/operatorAuth';
 import { authenticatedRedirect, unauthenticatedRedirect } from './shared/lib/authRouting';
+import { PasskeyEnrollmentPrompt } from './features/auth/ui/PasskeyEnrollmentPrompt';
 
 export function AppContent() {
   const store = useCrmStore();
+  const [operatorSession, setOperatorSession] = useState<OperatorSession | null>(null);
   const {
     isAuthenticated,
     authReady,
@@ -41,8 +43,16 @@ export function AppContent() {
   useEffect(() => {
     let active = true;
     readOperatorSession()
-      .then((operator) => { if (active) completeAuthCheck(operator); })
-      .catch(() => { if (active) completeAuthCheck(null, true); });
+      .then((operator) => {
+        if (!active) return;
+        setOperatorSession(operator);
+        completeAuthCheck(operator);
+      })
+      .catch(() => {
+        if (!active) return;
+        setOperatorSession(null);
+        completeAuthCheck(null, true);
+      });
     return () => { active = false; };
   }, [completeAuthCheck]);
 
@@ -161,6 +171,10 @@ export function AppContent() {
       id="meta-crm-lab-root"
       className="flex h-screen w-screen overflow-hidden bg-white antialiased font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-900"
     >
+      <PasskeyEnrollmentPrompt
+        hasPasskey={operatorSession?.hasPasskey ?? null}
+        onEnrolled={() => setOperatorSession((session) => session ? { ...session, hasPasskey: true } : session)}
+      />
       {/* Permanent Left Navigation Sidebar */}
       <SidebarWidget />
 

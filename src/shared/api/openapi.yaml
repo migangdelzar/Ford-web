@@ -1875,6 +1875,7 @@ components:
         - email
         - roles
         - tenantIds
+        - hasPasskey
       properties:
         operatorId:
           type: string
@@ -1897,6 +1898,8 @@ components:
           items:
             type: string
             format: uuid
+        hasPasskey:
+          type: boolean
     ProblemDetail:
       type: object
       required:

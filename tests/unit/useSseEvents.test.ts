@@ -48,7 +48,7 @@ describe('useSseEvents', () => {
     vi.stubGlobal('fetch', fetchMock);
     const store = renderHook(() => useCrmStore());
     act(() => store.result.current.completeAuthCheck({
-      operatorId: 'operator-1', displayName: 'Test', email: 'test@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'],
+      operatorId: 'operator-1', displayName: 'Test', email: 'test@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'], hasPasskey: false,
     }));
     renderHook(() => useSseEvents(true, 'tenant-1'));
 

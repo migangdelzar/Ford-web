@@ -3088,7 +3088,8 @@
           "displayName",
           "email",
           "roles",
-          "tenantIds"
+          "tenantIds",
+          "hasPasskey"
         ],
         "properties": {
           "operatorId": {
@@ -3119,6 +3120,9 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "hasPasskey": {
+            "type": "boolean"
           }
         }
       },

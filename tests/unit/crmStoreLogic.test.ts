@@ -8,7 +8,7 @@ describe('useCrmStore State & Logic', () => {
     const { result } = renderHook(() => useCrmStore());
     act(() => {
       result.current.resetAllData();
-      result.current.completeAuthCheck({ operatorId: 'op-1', displayName: 'Admin', email: 'admin@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'] });
+      result.current.completeAuthCheck({ operatorId: 'op-1', displayName: 'Admin', email: 'admin@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'], hasPasskey: false });
       // Unit tests exercise simulated store actions; production auth clears demo records.
       result.current.resetAllData();
     });
@@ -182,7 +182,7 @@ it('keeps the selected conversation and refreshes its messages when the list rel
 
   const { result } = renderHook(() => useCrmStore());
   act(() => result.current.completeAuthCheck({
-    operatorId: 'operator-1', displayName: 'Operator', email: 'operator@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'],
+    operatorId: 'operator-1', displayName: 'Operator', email: 'operator@example.com', roles: ['ADMIN'], tenantIds: ['tenant-1'], hasPasskey: false,
   }));
   await act(async () => result.current.fetchConversations());
   act(() => result.current.selectConversation('b'));
