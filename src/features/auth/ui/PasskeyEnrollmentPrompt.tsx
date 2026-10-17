@@ -22,9 +22,11 @@ export function PasskeyEnrollmentPrompt({ hasPasskey, onEnrolled, register = reg
       await register();
       onEnrolled();
     } catch (registrationError) {
-      setError(registrationError instanceof Error
-        ? registrationError.message
-        : 'No se pudo completar el registro de la passkey.');
+      setError(registrationError instanceof DOMException
+        ? 'No se completó el registro. Puede intentarlo de nuevo o elegir “Más tarde”.'
+        : registrationError instanceof Error
+          ? registrationError.message
+          : 'No se pudo completar el registro de la passkey.');
     } finally {
       setRegistering(false);
     }

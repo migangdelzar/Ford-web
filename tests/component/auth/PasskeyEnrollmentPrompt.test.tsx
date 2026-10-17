@@ -61,7 +61,7 @@ describe('PasskeyEnrollmentPrompt', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Configurar passkey' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'No se pudo completar el registro de la passkey.',
+      'No se completó el registro. Puede intentarlo de nuevo o elegir “Más tarde”.',
     );
   });
 });
