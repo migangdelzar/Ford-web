@@ -7,7 +7,7 @@ Approved behavior/design: see Ford Service `docs/superpowers/specs/2026-10-18-bd
 - [x] Add a typed same-origin authenticated BFF client for Service's tenant-scoped digest GET endpoint.
 - [x] Add an inbox card showing business date/08:45 availability, ticket counts, packet completeness, and links into existing conversations; if the inbox is already open before 08:45, it refreshes when the server-reported availability timestamp arrives.
 - [x] Test ready, pre-availability, empty, retry, partial-packet, and active-tenant-change states; errors stay inside the card and do not block the inbox.
-- [x] Run full Ford-web tests (35 files / 142 passed), lint, production build, OpenAPI contract check (50 paths), and Pages function build. Protected preview/production verification remains open.
+- [x] Run full Ford-web tests (35 files / 143 passed), lint, production build, OpenAPI contract check (50 paths), and Pages function build. Protected preview/production verification remains open.
 - [ ] Production 08:45 verification remains open until approved holiday/calendar configuration, protected release, and operator dry-run are available.
 
 Ford-web is the locally hosted CRM application for the Ford Uruapan workflow. CRM functionality belongs in this app and its locally operated Ford Service backend; the plan does not call for integrating a separate external CRM provider.
@@ -46,6 +46,6 @@ The 08:45 digest is implemented locally as the approved in-app-only inbox card. 
 
 ### BDC digest implementation results (2026-10-18)
 
-- Service endpoint: tenant-scoped authenticated GET, read-only bounded JDBC query, metadata-only response; OpenAPI synchronized. Full tests/build compile pass (807 tests); focused HTTP integration test passes.
-- Ford-web: authenticated same-origin client and inbox card; 142/142 tests, TypeScript lint, build, 50-path API contract, and Pages function build pass.
+- Service endpoint: tenant-scoped authenticated GET, read-only bounded JDBC query, metadata-only response; OpenAPI synchronized. Full tests/build compile pass (808 tests); focused HTTP integration test passes.
+- Ford-web: authenticated same-origin client and inbox card; 143/143 tests, TypeScript lint, build, 50-path API contract, and Pages function build pass.
 - No release/deployment occurred.
