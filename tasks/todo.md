@@ -40,7 +40,7 @@ Acceptance: both UI endpoints pass through the same authenticated BFF session as
 
 ### Publication recheck (2026-10-18)
 
-- [ ] Publish commits `453a8a2` and `6fd7de2`, plus the current BFF route/test changes, through Ford-web's protected release path. The branch is two commits ahead of `origin/main` with local changes; local `gh auth status` reports an invalid token and `api.github.com` DNS lookup fails. No push or production release occurred.
+- [ ] Publish the integrated `feat/mia-phase-one-web` candidate through Ford-web's protected release path. Current local HEAD is `6298ae4`, five commits ahead of cached `origin/main`; it includes shadow review, authenticated BFF routes, and the after-hours digest. The worktree has no tracked source changes (`.tgrep/` is generated local state). Remote freshness, PR/check state, and production release cannot be verified from the active Codex shell: `gh` auth is invalid and `api.github.com` is unreachable. No push or release occurred.
 
 The 08:45 digest is implemented locally as the approved in-app-only inbox card. Production delivery verification remains open pending protected release and approved dealership calendar/operator dry-run.
 
@@ -49,3 +49,8 @@ The 08:45 digest is implemented locally as the approved in-app-only inbox card. 
 - Service endpoint: tenant-scoped authenticated GET, read-only bounded JDBC query, metadata-only response; OpenAPI synchronized. Full tests/build compile pass (808 tests); focused HTTP integration test passes.
 - Ford-web: authenticated same-origin client and inbox card; 143/143 tests, TypeScript lint, build, 50-path API contract, and Pages function build pass.
 - No release/deployment occurred.
+
+### Coordinated candidate refresh (2026-10-18)
+
+- [x] Reconcile the previous publication note with current local history: `feat/mia-phase-one-web` contains five commits beyond cached `origin/main`, ending at `6298ae4`; the digest implementation and its verification docs are included.
+- [ ] Do not infer the candidate is unmerged from the cached `origin/main` distance. Refresh remote refs and inspect protected PR/release state from a session with valid GitHub API access before publication.
