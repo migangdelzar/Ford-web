@@ -243,6 +243,68 @@ describe('Ford-web BFF authentication', () => {
     });
   });
 
+  it('forwards shadow-draft review only through an authenticated session with CSRF', async () => {
+    const { app, sessions, service } = fixture();
+    const sessionId = await sessions.createSession({
+      accessToken: 'private-access', refreshToken: 'private-refresh', expiresAt: Date.now() + 60_000, profile: operator,
+    });
+    const conversationId = '22111111-1111-1111-1111-111111111111';
+    const draftId = '33111111-1111-1111-1111-111111111111';
+    const tenantId = operator.tenantIds[0];
+    const listPath = `/api/v1/conversations/${conversationId}/shadow-drafts?tenantId=${tenantId}`;
+    const reviewPath = `/api/v1/conversations/${conversationId}/shadow-drafts/${draftId}/review?tenantId=${tenantId}`;
+
+    await withServer(app, async (origin) => {
+      const unauthenticated = await fetch(`${origin}${listPath}`);
+      expect(unauthenticated.status).toBe(401);
+
+      const list = await fetch(`${origin}${listPath}`, {
+        headers: { cookie: `ford_session=${sessionId}` },
+      });
+      expect(list.status).toBe(200);
+      expect(service.request).toHaveBeenCalledWith(listPath, 'private-access', expect.objectContaining({ method: 'GET' }));
+
+      vi.mocked(service.request).mockClear();
+      const rejectedReview = await fetch(`${origin}${reviewPath}`, {
+        method: 'POST',
+        headers: { cookie: `ford_session=${sessionId}; XSRF-TOKEN=csrf-value`, 'content-type': 'application/json' },
+        body: JSON.stringify({ decision: 'REJECTED', note: 'needs review' }),
+      });
+      expect(rejectedReview.status).toBe(403);
+      expect(service.request).not.toHaveBeenCalled();
+
+      const acceptedReview = await fetch(`${origin}${reviewPath}`, {
+        method: 'POST',
+        headers: {
+          cookie: `ford_session=${sessionId}; XSRF-TOKEN=csrf-value`,
+          'x-xsrf-token': 'csrf-value',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ decision: 'REJECTED', note: 'needs review' }),
+      });
+      expect(acceptedReview.status).toBe(200);
+      expect(service.request).toHaveBeenCalledWith(reviewPath, 'private-access', expect.objectContaining({
+        method: 'POST', body: JSON.stringify({ decision: 'REJECTED', note: 'needs review' }),
+      }));
+
+      vi.mocked(service.request).mockClear();
+      const unsupportedSend = await fetch(
+        `${origin}/api/v1/conversations/${conversationId}/shadow-drafts/${draftId}/send?tenantId=${tenantId}`,
+        {
+          method: 'POST',
+          headers: {
+            cookie: `ford_session=${sessionId}; XSRF-TOKEN=csrf-value`,
+            'x-xsrf-token': 'csrf-value',
+            'content-type': 'application/json',
+          },
+          body: '{}',
+        },
+      );
+      expect(unsupportedSend.status).toBe(404);
+      expect(service.request).not.toHaveBeenCalled();
+    });
+  });
+
   it('forwards approved conversation restart and runtime settings routes with operator access token', async () => {
     const { app, sessions, service } = fixture();
     const sessionId = await sessions.createSession({

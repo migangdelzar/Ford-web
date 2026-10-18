@@ -91,4 +91,5 @@ describe('operator CRM API', () => {
     expect(fetchMock.mock.calls[2][0]).toBe('/api/v1/conversations/conversation-1/takeover?tenantId=tenant-1');
     expect(fetchMock.mock.calls[4][0]).toBe('/api/v1/conversations/conversation-1/handback?expectedVersion=2');
   });
+
 });

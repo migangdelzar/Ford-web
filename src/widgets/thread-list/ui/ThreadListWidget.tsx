@@ -10,6 +10,7 @@ import { Button } from '../../../shared/ui/Button';
 import { FilterPopover } from '../../../features/filter/ui/FilterPopover';
 import { ActiveFilterChips } from '../../../features/filter/ui/ActiveFilterChips';
 import { LeadTemperature } from '../../../types';
+import { AfterHoursDigestCard } from './AfterHoursDigestCard';
 
 type SmartView = 'all' | 'human' | 'bot';
 
@@ -19,6 +20,7 @@ export const ThreadListWidget: React.FC = () => {
     conversations,
     messages,
     selectedConversationId,
+    activeTenantId,
     selectConversation,
     toggleTakeover,
     searchQuery,
@@ -159,6 +161,8 @@ export const ThreadListWidget: React.FC = () => {
           />
         )}
       </div>
+
+      <AfterHoursDigestCard tenantId={activeTenantId} onOpenConversation={selectConversation} />
 
       {/* Thread List Items: Continuous Full-Width Section with Crisp Dividers */}
       <div className="flex-1 overflow-y-auto bg-white divide-y divide-slate-100 pb-24 md:pb-4">
