@@ -1,5 +1,15 @@
 # MÍA Ford Uruapan Phase 1 — Ford-web
 
+## BDC in-app after-hours digest (2026-10-18)
+
+Approved behavior/design: see Ford Service `docs/superpowers/specs/2026-10-18-bdc-after-hours-digest-design.md` and `docs/superpowers/plans/2026-10-18-bdc-after-hours-digest.md`. Ford-web is the in-app delivery surface; no external alerts.
+
+- [x] Add a typed same-origin authenticated BFF client for Service's tenant-scoped digest GET endpoint.
+- [x] Add an inbox card showing business date/08:45 availability, ticket counts, packet completeness, and links into existing conversations; if the inbox is already open before 08:45, it refreshes when the server-reported availability timestamp arrives.
+- [x] Test ready, pre-availability, empty, retry, partial-packet, and active-tenant-change states; errors stay inside the card and do not block the inbox.
+- [x] Run full Ford-web tests (35 files / 142 passed), lint, production build, OpenAPI contract check (50 paths), and Pages function build. Protected preview/production verification remains open.
+- [ ] Production 08:45 verification remains open until approved holiday/calendar configuration, protected release, and operator dry-run are available.
+
 Ford-web is the locally hosted CRM application for the Ford Uruapan workflow. CRM functionality belongs in this app and its locally operated Ford Service backend; the plan does not call for integrating a separate external CRM provider.
 
 ## Shadow draft review in the inbox
@@ -32,4 +42,10 @@ Acceptance: both UI endpoints pass through the same authenticated BFF session as
 
 - [ ] Publish commits `453a8a2` and `6fd7de2`, plus the current BFF route/test changes, through Ford-web's protected release path. The branch is two commits ahead of `origin/main` with local changes; local `gh auth status` reports an invalid token and `api.github.com` DNS lookup fails. No push or production release occurred.
 
-The 8:45 digest is a separate open item in the Service plan. Ford-web does not currently implement or deliver it; its channel and behavior need to be defined within the local CRM workflow before implementation.
+The 08:45 digest is implemented locally as the approved in-app-only inbox card. Production delivery verification remains open pending protected release and approved dealership calendar/operator dry-run.
+
+### BDC digest implementation results (2026-10-18)
+
+- Service endpoint: tenant-scoped authenticated GET, read-only bounded JDBC query, metadata-only response; OpenAPI synchronized. Full tests/build compile pass (807 tests); focused HTTP integration test passes.
+- Ford-web: authenticated same-origin client and inbox card; 142/142 tests, TypeScript lint, build, 50-path API contract, and Pages function build pass.
+- No release/deployment occurred.
