@@ -8,8 +8,10 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const IMPLEMENTED_API_ROUTES: ReadonlyArray<[string, RegExp]> = [
   ['GET', /^\/api\/v1\/(?:health|operator\/me|operator\/events\/stream|conversations|conversations\/runtime-settings|handoffs|metrics\/(?:overview|bot|leads|conversations|channels|advisors|funnel|timeseries)|leads|inventory|team\/advisors|bot\/config|events(?:\/stream)?|test-lab\/faults|branches\/on-duty|appointments\/available-slots)$/],
   ['GET', /^\/api\/v1\/(?:conversations|leads|handoffs)\/[0-9a-f-]{36}(?:\/(?:messages|window))?$/i],
+  ['GET', /^\/api\/v1\/conversations\/[0-9a-f-]{36}\/shadow-drafts$/i],
   ['GET', /^\/api\/v1\/vehicles\/[a-z0-9-]{1,32}$/i],
   ['POST', /^\/api\/v1\/(?:ai\/respond|conversations\/[0-9a-f-]{36}\/(?:messages|takeover|handback|restart)|handoffs(?:\/[0-9a-f-]{36}\/(?:claim|pause|resume))?|leads\/[0-9a-f-]{36}\/sync|finance\/quote|appointments\/book|conversations\/[0-9a-f-]{36}\/hsm)$/i],
+  ['POST', /^\/api\/v1\/conversations\/[0-9a-f-]{36}\/shadow-drafts\/[0-9a-f-]{36}\/review$/i],
   ['PATCH', /^\/api\/v1\/leads\/[0-9a-f-]{36}$/i],
   ['PUT', /^\/api\/v1\/(?:bot\/config|conversations\/runtime-settings|test-lab\/faults|operator\/ai\/system-prompt)$/],
   ['GET', /^\/api\/v1\/operator\/ai\/system-prompt$/],
