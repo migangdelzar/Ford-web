@@ -10,6 +10,7 @@ import { OmniComposer } from '../../../features/composer/ui/OmniComposer';
 import { useToast } from '../../../shared/ui/SonnerToast';
 import { ConfirmDialog } from '../../../shared/ui/ConfirmDialog';
 import { restartConversationContext } from '../../../shared/api/operatorCrmApi';
+import { ShadowDraftReviewPanel } from './ShadowDraftReviewPanel';
 
 const getDateLabel = (isoDate: string, t: (k: string) => string, lang: string) => {
   const date = new Date(isoDate);
@@ -296,6 +297,12 @@ export const ConversationWidget: React.FC = () => {
 
         <div ref={scrollBottomRef} />
       </div>
+
+      <ShadowDraftReviewPanel
+        tenantId={activeTenantId}
+        conversationId={currentConv.id}
+        isAuthenticated={isAuthenticated}
+      />
 
       {/* OmniComposer */}
       <OmniComposer
